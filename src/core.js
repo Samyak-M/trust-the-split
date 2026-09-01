@@ -45,10 +45,25 @@ export function balances(project) {
   txs.forEach(x => {
     if (x.type === "deposit") {
       if (b[x.from] !== undefined) b[x.from] -= x.amount;
-      if (b[x.to] !== undefined) b[x.to] += x.amount;
-    } else if (x.type === "expense" && b[x.from] !== undefined) {
-      // person who paid the expense is temporarily credited with the amount paid
-      b[x.from] += x.amount;
+      if (x.holders?.length > 1) {
+        // Multi-holder deposit
+        x.holders.forEach(holder => {
+          const amt = x.holderAmts?.[holder] || (x.amount / x.holders.length);
+          if (b[holder] !== undefined) b[holder] += amt;
+        });
+      } else if (b[x.to] !== undefined) {
+        b[x.to] += x.amount;
+      }
+    } else if (x.type === "expense") {
+      // Handle multi-payer expenses
+      if (x.payers && typeof x.payers === "object") {
+        Object.entries(x.payers).forEach(([payerId, amt]) => {
+          if (b[payerId] !== undefined) b[payerId] += amt;
+        });
+      } else if (b[x.from] !== undefined) {
+        // Single payer expense
+        b[x.from] += x.amount;
+      }
     }
   });
 
@@ -60,8 +75,24 @@ export function balances(project) {
 
   // settlements (repayments)
   (project.settlements || []).forEach(s => {
-    if (b[s.from] !== undefined) b[s.from] += s.amount;
-    if (b[s.to] !== undefined) b[s.to] -= s.amount;
+    // Handle multi-payer settlements
+    if (s.payers && typeof s.payers === "object") {
+      Object.entries(s.payers).forEach(([payerId, amt]) => {
+        if (b[payerId] !== undefined) b[payerId] += amt;
+      });
+    } else if (b[s.from] !== undefined) {
+      b[s.from] += s.amount;
+    }
+
+    // Handle multi-recipient settlements
+    if (s.recipients?.length > 1) {
+      s.recipients.forEach(recId => {
+        const amt = s.recipientAmts?.[recId] || (s.amount / s.recipients.length);
+        if (b[recId] !== undefined) b[recId] -= amt;
+      });
+    } else if (b[s.to] !== undefined) {
+      b[s.to] -= s.amount;
+    }
   });
 
   return b;
