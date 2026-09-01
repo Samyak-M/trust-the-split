@@ -1,165 +1,86 @@
 # StallSplit — Shared Project Finance Tracker
 
-A lightweight, modular expense-splitting app for managing shared finances in projects, groups, or businesses (like stalls). Track deposits, expenses, settlements, and automatically calculate who owes whom.
+A lightweight expense-splitting app for groups running a project (a food stall, a trip, a puja). It models **money movement**, not a spreadsheet:
+
+1. **Deposit** — person A pays into the common pot; person B (or several people) hold it.
+2. **Expense** — one or more people pay a shop; the cost is shared with a rule on *that* expense only. Funding is either the **common fund** or **pocket**.
+3. **Settlement** — person A actually pays person B back. This does not rewrite deposits or expenses.
+
+The dashboard answers: who deposited what, who is holding common cash, who paid each bill, how each bill is shared, who should ultimately bear what, who pays whom, and what is still outstanding.
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 
 ## Features
 
-- 📊 **Dashboard** — Overview of cash holdings, debt relationships, and participant balances
-- 🧾 **Transaction Management** — Log deposits and expenses with flexible sharing modes
-- 💸 **Smart Settlements** — Track repayments and update outstanding balances
-- 👥 **People Management** — Add/remove project members
-- 📁 **Multi-Project Support** — Manage multiple groups/stalls simultaneously
-- 🔄 **Automatic Debt Simplification** — Greedy algorithm reduces transactions needed to settle
-- 💾 **Local Storage Persistence** — All data stored in browser (no server required)
-- 📱 **Responsive Design** — Works on desktop and mobile devices
+- Multi-project books (Bongo Mela, Goa Trip, …) with their own people
+- Multi-payer deposits and expenses (payer amounts must sum to the total)
+- Per-expense sharing: equal, unequal ₹, percentages, or head-count weights (e.g. 2 : 3 : 1)
+- Common cash holdings derived from transactions, not assumed to sit with one person
+- Splitwise-style “who pays whom” after settlements
+- People with history cannot be deleted until those records are moved
+- Optional **GitHub Pages + Supabase** so everyone edits one copy
 
-## Quick Start
+## Quick start (this browser only)
 
-### Option 1: Python (built-in on most systems)
-```bash
-python3 -m http.server 8000
-# Open http://localhost:8000 in your browser
-```
-
-### Option 2: Node.js + npm
 ```bash
 npm install
+npm test
 npm run dev
-# Opens http://localhost:8000 automatically
 ```
 
-### Option 3: Node.js Simple Server
-```bash
-npx http-server -p 8000 -o
-```
+Or `python3 -m http.server 8000` and open http://localhost:8000
 
-## Usage
+If you already opened an older build, this version uses a new storage key (`stallSplit_v5`). Clear site data if you want the seeded Bongo Mela books instead of a migrated copy.
 
-1. **Add People** — Go to People tab and add project members
-2. **Log Transactions**:
-   - **Deposits**: Money added to common fund (e.g., advance payment)
-   - **Expenses**: Costs paid from common fund or pocket money
-3. **Manage Sharing**:
-   - Equal split (each person gets 1/n share)
-   - Custom shares (by amount or percentage)
-4. **Track Settlements** — Record repayments between people
-5. **View Simplifications** — Dashboard shows minimal transactions needed to settle all debts
+## Shared online copy (GitHub Pages + Supabase)
 
-## Project Structure
+Everyone should use one source of truth.
 
-```
-trust-the-split/
-├── index.html          # Main HTML template
-├── styles.css          # All styling (single file, responsive)
-├── src/
-│   ├── core.js         # Pure functions: allocations, balances, settlements
-│   ├── store.js        # localStorage persistence + sample data
-│   └── main.js         # UI logic and event handlers
-├── package.json        # Dev dependencies and scripts
-├── LICENSE             # Apache 2.0
-└── README.md           # This file
-```
+1. **Frontend** — in the GitHub repo: Settings → Pages → Deploy from branch `main` / root. The site is static (`index.html` + `src/` + `styles.css`).
+2. **Database** — create a free [Supabase](https://supabase.com) project. In the SQL editor, run `supabase/schema.sql`. Under Database → Replication, enable realtime for `projects`.
+3. **Auth** — Authentication → Providers → Email. Add your Pages URL (and `http://localhost:8000`) to Redirect URLs.
+4. **Connect the app** — open **Sharing & login**, paste the project URL and the **anon public** key (Project Settings → API). Sign in with a magic link. Invite the others by email.
 
-## Architecture
+Until someone signs in, data stays in `localStorage` on that device.
 
-### Core Functions (`src/core.js`)
+## Bongo Mela seed
 
-- **`alloc(people, tx)`** — Compute per-person allocation for a transaction
-- **`expenseShares(project)`** — Aggregate expense shares per person
-- **`balances(project)`** — Calculate net balance per person (who owes/is owed)
-- **`simplify(project)`** — Greedy algorithm to reduce settlement transactions
-- **`moneyFmt(n)`** — Format rupees for display
-- **`nameById(project, id)`** — Look up person name by ID
+Participants: Sunanda, Mantu di, Payel Sarkar.
 
-### Data Structures
+Seeded deposits (not expenses): each of the three paid ₹5,000 held by Payel (₹15,000 common advance). Groceries ₹9,525 are paid from that common fund by Payel, split equally. Other source-sheet lines are included as pocket expenses with equal sharing so you can edit payer/share/funding to match what actually happened.
 
-**Project:**
-```javascript
-{
-  id: string,
-  name: string,
-  desc: string,
-  people: [{ id, name }],
-  transactions: [{ date, type, desc, amount, from, to, source, shareMode, shares }],
-  settlements: [{ date, from, to, amount, note }],
-  sourceSnapshot: { date, commonBalance, personNet }
-}
-```
+The sheet snapshot ₹1,873 / −₹997 / −₹876 is shown on the dashboard **for reconciliation only**. The app will not force those numbers if the underlying rows do not support them.
 
-**Transaction Types:**
-- `"deposit"` — Money added to common fund (from → to person holding cash)
-- `"expense"` — Cost paid (from person who paid, source: "pocket" or "common")
+## Money rules
 
-**Share Modes:**
-- `"equal"` — Each person gets 1/n
-- `"amount"` — Custom amounts per person
-- `"share"` — Custom shares (normalized to sum to 1)
+| Movement | Effect |
+| --- | --- |
+| Deposit | Increases *deposited* for payers; increases *common cash held* for holders |
+| Common-fund expense | Reduces the payer’s holdings; allocates *should bear* via the expense’s share rule. Does **not** count as pocket spending |
+| Pocket expense | Increases *pocket paid*; does **not** touch the common pot |
+| Cash move | Only changes who is holding common cash |
+| Settlement | Changes outstanding “who pays whom” only |
 
-### Storage
-
-- **Key:** `stallSplit_v4` (localStorage)
-- **Format:** JSON stringified database object
-- **Auto-init:** If storage is empty, loads sample "Bongo Mela" project
+Net = deposited + pocket paid − should bear + settlements paid − settlements received.
 
 ## Development
 
-### Running Tests
-
-No formal test suite yet. Manual testing checklist:
-- [ ] Add/edit/delete people
-- [ ] Log different transaction types
-- [ ] Toggle sharing modes
-- [ ] Verify balance calculations match expected
-- [ ] Record settlements and confirm they update balances
-- [ ] Switch between projects
-- [ ] Hard refresh browser and verify data persists
-
-### Browser Console Helpers
-
-In the dev console:
-```javascript
-// Inspect current state
-window.db
-
-// Force re-render
-window.render()
-
-// Clear all data
-localStorage.removeItem('stallSplit_v4')
+```bash
+npm test          # accounting checks
+npm run dev       # http://localhost:8000
 ```
 
-## Known Limitations
+- `src/core.js` — pure calculations and validation
+- `src/store.js` — localStorage + Bongo Mela seed
+- `src/remote.js` — optional Supabase sync and auth
+- `src/main.js` — UI
 
-- No backend sync (single browser only)
-- No authentication or multi-user editing
-- No data export (can copy JSON from console)
-- No undo/redo (refresh page to see last persisted state)
-- All data in one localStorage key (browser/device specific)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Make changes and test in browser
-4. Commit with clear messages
-5. Push and open a PR
-
-**Guidelines:**
-- Keep UI and core logic separated
-- `core.js` functions must be pure (no side effects)
-- Test edge cases (empty lists, zero amounts, rounding)
-- Keep styles in `styles.css` (no inline styles)
+In the browser console: `window.db` and `window.render()`.
 
 ## License
 
-Apache License 2.0 — See LICENSE file for details
+Apache License 2.0 — see LICENSE.
 
 ## Author
 
 Samyak Mukherjee — [mukherjeesamyak88@gmail.com](mailto:mukherjeesamyak88@gmail.com)
-
-## Support
-
-For issues, questions, or suggestions, open a GitHub issue or contact the author.

@@ -3,63 +3,130 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>StallSplit — Shared Project Finance</title>
+  <title>StallSplit — Shared project finance</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div id="banner" class="banner" hidden></div>
   <div class="app">
     <aside class="side">
       <div class="brand">StallSplit</div>
       <div class="projectbox">
         <div class="small muted">PROJECT</div>
-        <select id="projectSelect" style="width:100%;margin-top:5px"></select>
+        <select id="projectSelect"></select>
       </div>
       <button class="nav active" data-view="dashboard">📊 <span>Dashboard</span></button>
-      <button class="nav" data-view="transactions">🧾 <span>Transactions</span></button>
+      <button class="nav" data-view="transactions">🧾 <span>Money movement</span></button>
       <button class="nav" data-view="balances">💸 <span>Who pays whom</span></button>
       <button class="nav" data-view="settlements">✓ <span>Settlements</span></button>
       <button class="nav" data-view="people">👥 <span>People</span></button>
       <button class="nav" data-view="projects">📁 <span>Projects</span></button>
+      <button class="nav" data-view="settings">⚙️ <span>Sharing &amp; login</span></button>
     </aside>
+
+    <nav class="mobile-nav" aria-label="Main">
+      <button class="nav active" data-view="dashboard">Dash</button>
+      <button class="nav" data-view="transactions">Money</button>
+      <button class="nav" data-view="balances">Settle</button>
+      <button class="nav" data-view="people">People</button>
+      <button class="nav" data-view="settings">Share</button>
+    </nav>
 
     <main class="main">
       <div class="top">
         <div>
-          <h1 id="title">Bongo Mela</h1>
+          <h1 id="title">StallSplit</h1>
           <div id="subtitle" class="muted"></div>
         </div>
+        <div id="authChip" class="muted small"></div>
       </div>
 
       <section id="dashboard" class="view active">
         <div id="kpis" class="grid"></div>
-        <div class="card"><h2>Common cash — who is holding it?</h2><div id="cashHolders"></div></div>
-        <div class="card"><h2>Simple balance — who pays whom</h2><div id="debtList"></div></div>
-        <div class="card"><h2>Participant summary</h2><div class="table"><table><thead><tr><th>Person</th><th>Deposited</th><th>Pocket paid</th><th>Expense share</th><th>Net position</th></tr></thead><tbody id="personSummary"></tbody></table></div></div>
+        <div class="card">
+          <h2>Common money — who is holding it?</h2>
+          <p class="muted">Taken from deposits, common-fund expenses, and cash moves — not from net balances.</p>
+          <div id="cashHolders"></div>
+        </div>
+        <div class="card">
+          <h2>Who pays whom?</h2>
+          <div id="debtList"></div>
+        </div>
+        <div class="card">
+          <h2>Participant summary</h2>
+          <div class="table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  <th>Deposited</th>
+                  <th>Pocket paid</th>
+                  <th>Contributed</th>
+                  <th>Should bear</th>
+                  <th>Net</th>
+                </tr>
+              </thead>
+              <tbody id="personSummary"></tbody>
+            </table>
+          </div>
+        </div>
         <div id="reconcile"></div>
       </section>
 
       <section id="transactions" class="view">
         <div class="card">
           <div class="flex">
-            <h2 style="margin-right:auto">Transactions</h2>
-            <button type="button" id="addTx">+ Add transaction</button>
+            <h2 class="grow">Deposits, expenses &amp; cash moves</h2>
+            <button type="button" id="addTx">+ Add</button>
           </div>
-          <p class="muted"><b>Deposit:</b> choose both <i>Paid by</i> and <i>Paid to / held by</i>. This determines where the common cash is currently held. <b>Expense:</b> choose who paid and whether it came from the common fund or pocket.</p>
-          <div class="table"><table><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>Paid by</th><th>Paid to / Fund</th><th>Sharing</th><th>Actions</th></tr></thead><tbody id="txTable"></tbody></table></div>
+          <p class="muted">
+            <b>Deposit</b> is advance into the common pot (who paid → who holds it).
+            <b>Expense</b> is money leaving the group, from the common fund or from someone’s pocket.
+            <b>Cash move</b> only changes who is holding common cash.
+          </p>
+          <div class="table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>Amount</th>
+                  <th>Paid by</th>
+                  <th>Held by / fund</th>
+                  <th>Sharing</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="txTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       <section id="balances" class="view">
-        <div class="card"><h2>Who pays whom?</h2><p class="muted">Splitwise-style simplified instructions. Recorded repayments are already taken into account.</p><div id="balancesView"></div></div>
+        <div class="card">
+          <h2>Who pays whom?</h2>
+          <p class="muted">Simplified transfers after recorded settlements. Original deposits and expenses are not changed.</p>
+          <div id="balancesView"></div>
+        </div>
       </section>
 
       <section id="settlements" class="view">
         <div class="card">
           <div class="flex">
-            <h2 style="margin-right:auto">Settlement history</h2>
+            <h2 class="grow">Settlement history</h2>
             <button type="button" id="addSettlement">+ Record repayment</button>
           </div>
-          <div class="table"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Note</th><th>Actions</th></tr></thead><tbody id="settleTable"></tbody></table></div>
+          <div class="table">
+            <table>
+              <thead>
+                <tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Note</th><th></th></tr>
+              </thead>
+              <tbody id="settleTable"></tbody>
+            </table>
+          </div>
           <div class="notice">A repayment changes the outstanding balance only. It does not change the original expense or deposit.</div>
         </div>
       </section>
@@ -67,27 +134,81 @@
       <section id="people" class="view">
         <div class="card">
           <div class="flex">
-            <h2 style="margin-right:auto">People</h2>
+            <h2 class="grow">People in this project</h2>
             <button type="button" id="addPerson">+ Add person</button>
           </div>
-          <div class="table"><table><thead><tr><th>Name</th><th>Actions</th></tr></thead><tbody id="peopleTable"></tbody></table></div>
+          <p class="muted">Someone with deposits, expenses, or settlements cannot be deleted until those records are reassigned or removed.</p>
+          <div class="table">
+            <table>
+              <thead><tr><th>Name</th><th></th></tr></thead>
+              <tbody id="peopleTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       <section id="projects" class="view">
         <div class="card">
           <div class="flex">
-            <h2 style="margin-right:auto">Projects / Groups</h2>
+            <h2 class="grow">Projects / groups</h2>
             <button type="button" id="addProject">+ New project</button>
           </div>
-          <div class="table"><table><thead><tr><th>Project</th><th>Description</th><th>People</th><th>Actions</th></tr></thead><tbody id="projectTable"></tbody></table></div>
+          <p class="muted">Each project has its own people and books.</p>
+          <div class="table">
+            <table>
+              <thead><tr><th>Project</th><th>Description</th><th>People</th><th></th></tr></thead>
+              <tbody id="projectTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
+      <section id="settings" class="view">
+        <div class="card">
+          <h2>One shared copy (GitHub Pages + Supabase)</h2>
+          <p class="muted">Without this, data stays in this browser only. Connect a Supabase project so everyone sees the same books.</p>
+          <div class="formgrid">
+            <label>Supabase URL<input id="sbUrl" placeholder="https://xxxx.supabase.co"></label>
+            <label>Anon public key<input id="sbKey" placeholder="eyJ..."></label>
+          </div>
+          <div class="flex" style="margin-top:12px">
+            <button type="button" id="saveRemote">Save connection</button>
+            <button type="button" class="secondary" id="clearRemote">Use this browser only</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Sign in</h2>
+          <p class="muted">Magic link email. Add the same URL under Authentication → URL configuration in Supabase (Redirect URLs).</p>
+          <div class="flex">
+            <input id="authEmail" type="email" placeholder="you@email.com" style="flex:1">
+            <button type="button" id="sendMagic">Send magic link</button>
+            <button type="button" class="secondary" id="signOutBtn">Sign out</button>
+          </div>
+          <p id="authStatus" class="muted" style="margin-top:10px"></p>
+        </div>
+        <div class="card">
+          <h2>Invite someone to this project</h2>
+          <p class="muted">They sign in with that email, then the project appears for them.</p>
+          <div class="flex">
+            <input id="inviteEmail" type="email" placeholder="teammate@email.com" style="flex:1">
+            <button type="button" id="inviteBtn">Invite</button>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
-  <div class="modal" id="modal"><div class="modalbox"><h2 id="modalTitle"></h2><div id="modalBody"></div><div class="flex" style="justify-content:flex-end;margin-top:16px"><button class="secondary" id="modalCancel">Cancel</button><button id="modalSave">Save</button></div></div></div>
+  <div class="modal" id="modal">
+    <div class="modalbox">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <p id="modalError" class="err" hidden></p>
+      <div class="flex modal-actions">
+        <button class="secondary" type="button" id="modalCancel">Cancel</button>
+        <button type="button" id="modalSave">Save</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="src/main.js"></script>
 </body>
