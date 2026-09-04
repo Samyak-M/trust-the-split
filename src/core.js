@@ -324,6 +324,52 @@ export function validateSettlement(project, s, { allowOverpay = false } = {}) {
   return null;
 }
 
+export function expensePaidBy(project) {
+  const people = project.people || [];
+  const out = Object.fromEntries(people.map(p => [p.id, 0]));
+  (project.transactions || []).filter(t => t.type === "expense").forEach(tx => {
+    Object.entries(payerMap(tx)).forEach(([id, amt]) => {
+      if (out[id] !== undefined) out[id] = round2(out[id] + amt);
+    });
+  });
+  return out;
+}
+
+export function settlementTotals(project) {
+  const people = project.people || [];
+  const paid = Object.fromEntries(people.map(p => [p.id, 0]));
+  const received = Object.fromEntries(people.map(p => [p.id, 0]));
+  (project.settlements || []).forEach(s => {
+    const amt = round2(s.amount);
+    if (paid[s.from] !== undefined) paid[s.from] = round2(paid[s.from] + amt);
+    if (received[s.to] !== undefined) received[s.to] = round2(received[s.to] + amt);
+  });
+  return { paid, received };
+}
+
+export function expenseBreakdown(project, tx) {
+  if (!tx || tx.type !== "expense") return [];
+  const people = project.people || [];
+  const a = alloc(people, tx);
+  return people
+    .map(p => ({ id: p.id, name: p.name, share: round2(Number(tx.amount) * (a[p.id] || 0)) }))
+    .filter(x => x.share > EPS);
+}
+
+export function enrichedParticipantRows(project) {
+  const holdings = cashHoldings(project);
+  const paid = expensePaidBy(project);
+  const st = settlementTotals(project);
+  return participantRows(project).map(r => ({
+    ...r,
+    expensePaid: paid[r.id] || 0,
+    holding: holdings[r.id] || 0,
+    settledOut: st.paid[r.id] || 0,
+    settledIn: st.received[r.id] || 0,
+    status: r.net > EPS ? "gets" : r.net < -EPS ? "owes" : "settled"
+  }));
+}
+
 export function participantRows(project) {
   const dep = depositedBy(project);
   const pocket = pocketPaidBy(project);

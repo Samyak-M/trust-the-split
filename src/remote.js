@@ -21,6 +21,62 @@ export function isConfigured(cfg = getRemoteConfig()) {
 
 let client = null;
 let clientKey = "";
+let authUnsub = null;
+
+export function cleanAuthUrl() {
+  const url = new URL(window.location.href);
+  const hash = url.hash.replace(/^#/, "");
+  const params = new URLSearchParams(url.search);
+  const hashParams = new URLSearchParams(hash);
+  const hasAuth =
+    hash.includes("access_token") || hash.includes("error") ||
+    params.has("code") || params.has("error");
+  if (!hasAuth) return;
+  url.hash = "";
+  ["code", "error", "error_description", "error_code"].forEach(k => params.delete(k));
+  const qs = params.toString();
+  window.history.replaceState({}, "", url.pathname + (qs ? `?${qs}` : ""));
+  return hashParams.get("error_description") || hashParams.get("error") ||
+    params.get("error_description") || params.get("error") || null;
+}
+
+/** Wait for magic-link / OAuth callback, then return session (keeps existing login on reused links). */
+export async function resolveSession() {
+  const sb = await getClient();
+  if (!sb) return { session: null, authError: null };
+
+  const { data: { session: existing } } = await sb.auth.getSession();
+  let authError = null;
+  const url = new URL(window.location.href);
+  const hash = url.hash.replace(/^#/, "");
+
+  const code = url.searchParams.get("code");
+  if (code) {
+    const { error } = await sb.auth.exchangeCodeForSession(code);
+    if (error) authError = error.message;
+    cleanAuthUrl();
+  } else if (hash) {
+    const hp = new URLSearchParams(hash);
+    if (hp.get("error") || hp.get("error_code")) {
+      authError = hp.get("error_description") || hp.get("error") || "Sign-in link invalid or already used.";
+      cleanAuthUrl();
+      if (existing) return { session: existing, authError };
+    } else if (hp.get("access_token") && hp.get("refresh_token")) {
+      const { error } = await sb.auth.setSession({
+        access_token: hp.get("access_token"),
+        refresh_token: hp.get("refresh_token")
+      });
+      if (error) {
+        authError = error.message;
+        if (existing) return { session: existing, authError };
+      }
+      cleanAuthUrl();
+    }
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  return { session: session || existing, authError };
+}
 
 export async function getClient() {
   const cfg = getRemoteConfig();
@@ -33,7 +89,12 @@ export async function getClient() {
   if (client && clientKey === key) return client;
   const { createClient } = await import(SB_ESM);
   client = createClient(cfg.url, cfg.anonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      storage: window.localStorage
+    }
   });
   clientKey = key;
   return client;
@@ -44,6 +105,19 @@ export async function getSession() {
   if (!sb) return null;
   const { data } = await sb.auth.getSession();
   return data.session || null;
+}
+
+export function subscribeAuth(onChange) {
+  if (authUnsub) authUnsub();
+  authUnsub = null;
+  return getClient().then(sb => {
+    if (!sb) return () => {};
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, sess) => {
+      onChange(sess);
+    });
+    authUnsub = () => subscription.unsubscribe();
+    return authUnsub;
+  });
 }
 
 export async function signInWithEmail(email) {

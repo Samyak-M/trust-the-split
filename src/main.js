@@ -1,13 +1,13 @@
 import {
   uid, moneyFmt, nameById, shareLabel, payerMap, holderMap,
-  totals, participantRows, simplify,
+  totals, enrichedParticipantRows, simplify, expenseBreakdown,
   validateTransaction, validateSettlement, personUsage, nearEq, round2
 } from "./core.js";
 import { loadLocalDB, saveLocalDB } from "./store.js";
 import {
-  getRemoteConfig, setRemoteConfig, isConfigured, getSession, signInWithEmail,
+  getRemoteConfig, setRemoteConfig, isConfigured, resolveSession, signInWithEmail,
   signOut, fetchRemoteProjects, upsertRemoteProject, deleteRemoteProject,
-  inviteToProject, subscribeProjects
+  inviteToProject, subscribeProjects, subscribeAuth
 } from "./remote.js";
 import { SUPABASE } from "./config.js";
 import {
@@ -24,6 +24,7 @@ let session = null;
 let modal = { type: null, idx: null };
 let importState = { rows: [], headers: [], columnMap: {}, target: "project" };
 let unsub = () => {};
+let unsubAuth = () => {};
 let persistTimer = 0;
 
 const $ = id => document.getElementById(id);
@@ -86,11 +87,8 @@ function attach() {
   document.querySelectorAll(".nav").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
-  $("projectSelect").addEventListener("change", e => {
-    db.current = e.target.value;
-    persist();
-    renderAll();
-  });
+  $("projectSelect").addEventListener("change", e => onProjectChange(e.target.value));
+  $("projectSelectMobile")?.addEventListener("change", e => onProjectChange(e.target.value));
   $("addTx").addEventListener("click", () => openModal("transaction", null));
   $("addTxEmpty")?.addEventListener("click", () => openModal("transaction", null));
   $("addSettlement").addEventListener("click", () => openModal("settlement", null));
@@ -128,6 +126,14 @@ function attach() {
   });
 
   $("fileInput").addEventListener("change", onFileSelected);
+
+  $("dashTabs")?.addEventListener("click", e => {
+    const tab = e.target.closest("[data-dash]");
+    if (!tab) return;
+    document.querySelectorAll(".dash-tabs .tab").forEach(t => t.classList.toggle("active", t === tab));
+    $("dashOverview").hidden = tab.dataset.dash !== "overview";
+    $("dashPeople").hidden = tab.dataset.dash !== "people";
+  });
 }
 
 async function sendMagicLink() {
@@ -176,10 +182,21 @@ function renderAuthArea() {
 }
 
 function renderProjectSelect() {
-  const sel = $("projectSelect");
-  sel.innerHTML = db.projects.map(p =>
+  const html = db.projects.map(p =>
     `<option value="${esc(p.id)}" ${p.id === db.current ? "selected" : ""}>${esc(p.name)}</option>`
   ).join("");
+  const sel = $("projectSelect");
+  const mobile = $("projectSelectMobile");
+  if (sel) sel.innerHTML = html;
+  if (mobile) mobile.innerHTML = html;
+}
+
+function onProjectChange(id) {
+  db.current = id;
+  if ($("projectSelect")) $("projectSelect").value = id;
+  if ($("projectSelectMobile")) $("projectSelectMobile").value = id;
+  persist();
+  renderAll();
 }
 
 function renderAll() {
@@ -204,15 +221,40 @@ function netClass(n) {
   return "";
 }
 
+function balanceLabel(net) {
+  if (net > 0.005) return { text: "gets back", cls: "pos" };
+  if (net < -0.005) return { text: "owes", cls: "neg" };
+  return { text: "settled", cls: "settled" };
+}
+
+function renderDebtList(p, debts, elId) {
+  const el = $(elId);
+  if (!debts.length) {
+    el.innerHTML = '<p class="good-msg">🎉 Everyone is settled up!</p>';
+    return;
+  }
+  el.innerHTML = debts.map(d => `
+    <div class="debt-card">
+      <div class="debt-person">${esc(nameById(p, d.from))}</div>
+      <div class="debt-arrow">pays</div>
+      <div class="debt-person">${esc(nameById(p, d.to))}</div>
+      <div class="debt-amt neg">${moneyFmt(d.amount)}</div>
+    </div>`).join("");
+}
+
 function renderDashboard(p) {
   const t = totals(p);
-  const rows = participantRows(p);
+  const rows = enrichedParticipantRows(p);
   const debts = simplify(p);
+  const totalSettled = round2((p.settlements || []).reduce((s, x) => s + Number(x.amount || 0), 0));
+
   $("kpis").innerHTML = `
-    <div class="kpi"><div class="muted">Total deposits</div><div class="v">${moneyFmt(t.deposits)}</div></div>
-    <div class="kpi"><div class="muted">Total expenditure</div><div class="v">${moneyFmt(t.expenses)}</div></div>
-    <div class="kpi"><div class="muted">Common cash remaining</div><div class="v">${moneyFmt(t.commonCash)}</div></div>
-    <div class="kpi"><div class="muted">Pocket spending</div><div class="v">${moneyFmt(t.pocketSpend)}</div></div>`;
+    <div class="kpi"><div class="muted">Total group spending</div><div class="v">${moneyFmt(t.expenses)}</div></div>
+    <div class="kpi"><div class="muted">Total deposited</div><div class="v">${moneyFmt(t.deposits)}</div></div>
+    <div class="kpi"><div class="muted">Common cash on hand</div><div class="v">${moneyFmt(t.commonCash)}</div></div>
+    <div class="kpi"><div class="muted">Repayments recorded</div><div class="v">${moneyFmt(totalSettled)}</div></div>`;
+
+  renderDebtList(p, debts, "debtList");
 
   const holders = (p.people || []).map(person => ({
     name: person.name,
@@ -220,38 +262,68 @@ function renderDashboard(p) {
   }));
   $("cashHolders").innerHTML = holders.map(h =>
     `<div class="flex rowline"><span>${esc(h.name)}</span><span>${moneyFmt(h.amt)}</span></div>`
-  ).join("") + `<div class="flex rowline total"><span>Total common cash</span><span>${moneyFmt(t.commonCash)}</span></div>`;
+  ).join("") + `<div class="flex rowline total"><span>Total</span><span>${moneyFmt(t.commonCash)}</span></div>`;
 
-  $("debtList").innerHTML = debts.length
-    ? debts.map(d => `<div class="flex rowline"><span>${esc(nameById(p, d.from))} → ${esc(nameById(p, d.to))}</span><span>${moneyFmt(d.amount)}</span></div>`).join("")
-    : '<p class="muted">No outstanding payments. Everyone is settled.</p>';
+  const recentSettle = (p.settlements || []).slice(-5).reverse();
+  $("dashSettlements").innerHTML = recentSettle.length
+    ? recentSettle.map(s => `
+      <div class="flex rowline">
+        <span>${esc(nameById(p, s.from))} → ${esc(nameById(p, s.to))}</span>
+        <span>${moneyFmt(s.amount)}</span>
+      </div>`).join("")
+    : '<p class="muted">No repayments recorded yet.</p>';
 
-  $("personSummary").innerHTML = rows.map(r => `
+  const expenses = (p.transactions || []).filter(tx => tx.type === "expense").slice(-8).reverse();
+  $("recentExpenses").innerHTML = expenses.length
+    ? expenses.map(tx => {
+      const splits = expenseBreakdown(p, tx);
+      const splitText = splits.map(s => `${esc(s.name)} ${moneyFmt(s.share)}`).join(", ");
+      return `
+        <div class="expense-row">
+          <div class="expense-main">
+            <strong>${esc(tx.desc)}</strong>
+            <span class="muted">${esc(tx.date)} · ${esc(tx.category || "—")}</span>
+          </div>
+          <div class="expense-amt">${moneyFmt(tx.amount)}</div>
+          <div class="expense-meta">
+            <span>Paid by ${esc(paidByLabel(p, tx))}</span>
+            <span>Split: ${splitText || "Equal"}</span>
+          </div>
+        </div>`;
+    }).join("")
+    : '<p class="muted">No expenses yet.</p>';
+
+  $("personCards").innerHTML = rows.map(r => {
+    const bal = balanceLabel(r.net);
+    return `
+      <div class="person-card">
+        <div class="person-card-name">${esc(r.name)}</div>
+        <div class="person-card-balance ${bal.cls}">
+          ${r.status === "settled" ? "Settled" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
+        </div>
+        <div class="person-card-stats">
+          <div><span class="muted">Deposited</span><strong>${moneyFmt(r.deposited)}</strong></div>
+          <div><span class="muted">Paid expenses</span><strong>${moneyFmt(r.expensePaid)}</strong></div>
+          <div><span class="muted">Their share</span><strong>${moneyFmt(r.share)}</strong></div>
+          <div><span class="muted">Holding cash</span><strong>${moneyFmt(r.holding)}</strong></div>
+        </div>
+      </div>`;
+  }).join("") || '<p class="muted">Add people to see individual spending.</p>';
+
+  $("personSummary").innerHTML = rows.map(r => {
+    const bal = balanceLabel(r.net);
+    return `
     <tr>
-      <td>${esc(r.name)}</td>
+      <td><strong>${esc(r.name)}</strong></td>
       <td>${moneyFmt(r.deposited)}</td>
-      <td>${moneyFmt(r.pocketPaid)}</td>
-      <td>${moneyFmt(r.contributed)}</td>
+      <td>${moneyFmt(r.expensePaid)}</td>
       <td>${moneyFmt(r.share)}</td>
-      <td class="${netClass(r.net)}">${moneyFmt(r.net)}</td>
-    </tr>`).join("");
-
-  const snap = p.sourceSnapshot;
-  if (!snap?.personNet) { $("reconcile").innerHTML = ""; return; }
-  const computed = Object.fromEntries(rows.map(r => [r.id, r.net]));
-  $("reconcile").innerHTML = `
-    <div class="card">
-      <h2>Source sheet snapshot (for reconciliation)</h2>
-      <p class="muted">${esc(snap.note || "")} As of ${esc(snap.date)}.</p>
-      <div class="table"><table><thead><tr><th>Person</th><th>Sheet</th><th>This app</th></tr></thead><tbody>
-        ${Object.keys(snap.personNet).map(id => {
-          const sheet = snap.personNet[id];
-          const app = computed[id] ?? 0;
-          const ok = nearEq(sheet, app);
-          return `<tr><td>${esc(nameById(p, id))}</td><td>${moneyFmt(sheet)}</td><td class="${ok ? "pos" : "neg"}">${moneyFmt(app)}${ok ? "" : " (differs)"}</td></tr>`;
-        }).join("")}
-      </tbody></table></div>
-    </div>`;
+      <td>${moneyFmt(r.settledOut)}</td>
+      <td>${moneyFmt(r.settledIn)}</td>
+      <td class="${bal.cls}">${r.status === "settled" ? "—" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}</td>
+      <td>${moneyFmt(r.holding)}</td>
+    </tr>`;
+  }).join("");
 }
 
 function paidByLabel(p, tx) {
@@ -306,16 +378,7 @@ function renderTransactions(p) {
 }
 
 function renderBalances(p) {
-  const debts = simplify(p);
-  $("balancesView").innerHTML = debts.length
-    ? debts.map(d => `
-      <div class="debt">
-        <div>${esc(nameById(p, d.from))}</div>
-        <div>→</div>
-        <div>${esc(nameById(p, d.to))}</div>
-        <div class="neg">${moneyFmt(d.amount)}</div>
-      </div>`).join("")
-    : '<p class="muted good-msg">Everyone is settled.</p>';
+  renderDebtList(p, simplify(p), "balancesView");
 }
 
 function renderSettlements(p) {
@@ -477,6 +540,7 @@ function startImport(target) {
 async function onFileSelected(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  showBanner(`Reading ${file.name}…`);
   try {
     const { headers, rows } = await parseFile(file);
     if (!rows.length) {
@@ -498,6 +562,8 @@ async function onFileSelected(e) {
     applyImport({ createPeople: true });
   } catch (err) {
     showBanner(err.message || "Could not read file", true);
+  } finally {
+    $("fileInput").value = "";
   }
 }
 
@@ -698,7 +764,7 @@ function err(msg) {
 }
 
 function saveModal() {
-  if (modal.type === "import") return applyImport();
+  if (modal.type === "import") return applyImport(); // legacy — import is now automatic on file pick
 
   const p = project();
   const { type, idx } = modal;
@@ -776,11 +842,21 @@ function saveModal() {
 }
 
 async function refreshAuth() {
+  unsubAuth();
   try {
-    session = await getSession();
+    const { session: s, authError } = await resolveSession();
+    session = s;
+    if (authError) {
+      if (session) {
+        showBanner("That sign-in link was already used. You're still signed in.");
+      } else {
+        showBanner(`${authError} Request a new link from Share.`, true);
+      }
+    }
   } catch {
     session = null;
   }
+
   unsub();
   if (session) {
     await loadFromRemote();
@@ -789,6 +865,24 @@ async function refreshAuth() {
       loadFromRemote();
     });
   }
+
+  unsubAuth = await subscribeAuth(async (s) => {
+    const wasOut = !session && s;
+    session = s;
+    if (!s) {
+      unsub();
+      unsub = () => {};
+    } else if (wasOut) {
+      await loadFromRemote();
+      unsub = await subscribeProjects(() => {
+        if (modal.type) return;
+        loadFromRemote();
+      });
+    }
+    renderAuthArea();
+    renderSettings();
+  });
+
   renderAuthArea();
   renderSettings();
 }

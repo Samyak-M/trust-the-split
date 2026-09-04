@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>StallSplit — Shared project finance</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
   <div id="banner" class="banner" hidden></div>
@@ -13,11 +14,11 @@
       <div class="brand">StallSplit</div>
       <div class="projectbox">
         <div class="small muted">PROJECT</div>
-        <select id="projectSelect"></select>
+        <select id="projectSelect" aria-label="Select project"></select>
       </div>
       <button class="nav active" data-view="dashboard">📊 <span>Dashboard</span></button>
       <button class="nav" data-view="transactions">🧾 <span>Transactions</span></button>
-      <button class="nav" data-view="balances">💸 <span>Who pays whom</span></button>
+      <button class="nav" data-view="balances">💸 <span>Settle up</span></button>
       <button class="nav" data-view="settlements">✓ <span>Settlements</span></button>
       <button class="nav" data-view="people">👥 <span>People</span></button>
       <button class="nav" data-view="projects">📁 <span>Projects</span></button>
@@ -33,8 +34,12 @@
     </nav>
 
     <main class="main">
+      <div class="mobile-projectbox">
+        <label for="projectSelectMobile" class="small muted">Project</label>
+        <select id="projectSelectMobile" aria-label="Select project"></select>
+      </div>
       <div class="top">
-        <div>
+        <div class="top-title">
           <h1 id="title">StallSplit</h1>
           <div id="subtitle" class="muted"></div>
         </div>
@@ -42,35 +47,63 @@
       </div>
 
       <section id="dashboard" class="view active">
-        <div id="kpis" class="grid"></div>
-        <div class="card">
-          <h2>Common money — who is holding it?</h2>
-          <p class="muted">Taken from deposits, common-fund expenses, and cash moves — not from net balances.</p>
-          <div id="cashHolders"></div>
+        <div id="kpis" class="grid kpi-grid"></div>
+
+        <div class="dash-tabs" id="dashTabs">
+          <button type="button" class="tab active" data-dash="overview">Group overview</button>
+          <button type="button" class="tab" data-dash="people">Individual spending</button>
         </div>
-        <div class="card">
-          <h2>Who pays whom?</h2>
-          <div id="debtList"></div>
-        </div>
-        <div class="card">
-          <h2>Participant summary</h2>
-          <div class="table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>Deposited</th>
-                  <th>Pocket paid</th>
-                  <th>Contributed</th>
-                  <th>Should bear</th>
-                  <th>Net</th>
-                </tr>
-              </thead>
-              <tbody id="personSummary"></tbody>
-            </table>
+
+        <div id="dashOverview">
+          <div class="card highlight-card">
+            <h2>Settle up</h2>
+            <p class="muted">Who still needs to pay whom — after all expenses and recorded repayments.</p>
+            <div id="debtList"></div>
+          </div>
+          <div class="two-col">
+            <div class="card">
+              <h2>Common cash — who is holding it?</h2>
+              <p class="muted">Physical cash from deposits, minus common-fund spending and cash moves.</p>
+              <div id="cashHolders"></div>
+            </div>
+            <div class="card">
+              <h2>Recent repayments</h2>
+              <div id="dashSettlements"></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Recent expenses &amp; how they were split</h2>
+            <div id="recentExpenses"></div>
           </div>
         </div>
-        <div id="reconcile"></div>
+
+        <div id="dashPeople" hidden>
+          <div class="card">
+            <h2>Everyone at a glance</h2>
+            <p class="muted">Deposits, what each person paid, their fair share of expenses, and final balance.</p>
+            <div id="personCards" class="person-grid"></div>
+          </div>
+          <div class="card">
+            <h2>Detailed breakdown</h2>
+            <div class="table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>Deposited</th>
+                    <th>Paid for expenses</th>
+                    <th>Their share</th>
+                    <th>Repaid others</th>
+                    <th>Received repayments</th>
+                    <th>Balance</th>
+                    <th>Holding cash</th>
+                  </tr>
+                </thead>
+                <tbody id="personSummary"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="transactions" class="view">
@@ -115,9 +148,9 @@
       </section>
 
       <section id="balances" class="view">
-        <div class="card">
-          <h2>Who pays whom?</h2>
-          <p class="muted">Simplified transfers after recorded settlements. Original deposits and expenses are not changed.</p>
+        <div class="card highlight-card">
+          <h2>Settle up</h2>
+          <p class="muted">Minimum transfers to clear all balances. Record actual repayments under Settlements.</p>
           <div id="balancesView"></div>
         </div>
       </section>
@@ -225,6 +258,6 @@
 
   <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls" hidden>
 
-  <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/main.js?v=6"></script>
 </body>
 </html>
