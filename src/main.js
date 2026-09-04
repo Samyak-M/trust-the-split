@@ -78,6 +78,7 @@ function showBanner(text, bad = false) {
 function setView(name) {
   document.querySelectorAll(".nav").forEach(b => b.classList.toggle("active", b.dataset.view === name));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === name));
+  window.scrollTo(0, 0);
 }
 
 function attach() {
