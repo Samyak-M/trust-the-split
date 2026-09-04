@@ -44,10 +44,23 @@ body {
 }
 
 .brand {
-  font-size: 22px;
-  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 20px;
-  letter-spacing: -0.5px;
+}
+
+.brand-logo {
+  flex-shrink: 0;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.brand-name {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
 }
 
 .projectbox {
@@ -629,7 +642,9 @@ label input, label select {
 
 @media (max-width: 850px) {
   .side { width: 68px; min-width: 68px; padding: 12px 8px; }
-  .brand, .projectbox, .nav span { display: none; }
+  .brand { display: flex; justify-content: center; margin-bottom: 12px; }
+  .brand-name, .projectbox, .nav span { display: none; }
+  .brand-logo { width: 32px; height: 32px; }
   .mobile-projectbox { display: block; }
   .main { padding: 16px; }
   .grid, .kpi-grid { grid-template-columns: repeat(2, 1fr); }

@@ -45,7 +45,7 @@ function summaryRows(project) {
   const totalSettled = round2((project.settlements || []).reduce((s, x) => s + Number(x.amount || 0), 0));
   const generated = new Date().toLocaleString();
   return [
-    ["StallSplit — Project Report"],
+    ["FunToSplit — Project Report"],
     [],
     ["Project", project.name],
     ["Description", project.description || project.desc || ""],

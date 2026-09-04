@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * One-command Supabase setup for StallSplit.
+ * One-command Supabase setup for FunToSplit.
  *
  * Usage:
  *   set SUPABASE_ACCESS_TOKEN=sbp_...   (Windows)
@@ -32,7 +32,7 @@ if (!token) {
 Missing SUPABASE_ACCESS_TOKEN.
 
 1. Open https://supabase.com/dashboard/account/tokens
-2. Create a token (name: StallSplit setup)
+2. Create a token (name: FunToSplit setup)
 3. Run:
 
    Windows PowerShell:
