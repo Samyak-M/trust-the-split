@@ -429,7 +429,7 @@ button:hover { background: var(--blue-hover); }
   font-weight: 500;
 }
 
-.type-deposit { background: #dbeafe; color: #1d4ed8; }
+.type-deposit { background: #dcfce7; color: #15803d; }
 .type-expense { background: #fee2e2; color: #b91c1c; }
 .type-transfer { background: #fef3c7; color: #b45309; }
 
@@ -544,6 +544,31 @@ label input, label select {
 
 .pos { color: var(--green); font-weight: 600; }
 .neg { color: var(--red); font-weight: 600; }
+.pending { color: var(--orange); font-weight: 600; }
+
+.amount-hint {
+  font-size: 13px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.share-preview {
+  margin-bottom: 12px;
+  padding: 8px 0;
+}
+
+.amt-calc {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.kpi-spend .v { color: var(--red); }
+.kpi-credit .v { color: var(--green); }
 
 .err { color: var(--red); margin: 12px 0 0; font-size: 13px; }
 .modal-actions { justify-content: flex-end; margin-top: 20px; }

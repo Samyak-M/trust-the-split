@@ -1,7 +1,8 @@
 import {
   uid, moneyFmt, nameById, shareLabel, payerMap, holderMap,
   totals, enrichedParticipantRows, simplify, expenseBreakdown,
-  validateTransaction, validateSettlement, personUsage, nearEq, round2
+  validateTransaction, validateSettlement, personUsage, nearEq, round2,
+  alloc, sumMap
 } from "./core.js";
 import { loadLocalDB, saveLocalDB } from "./store.js";
 import {
@@ -249,9 +250,9 @@ function renderDashboard(p) {
   const totalSettled = round2((p.settlements || []).reduce((s, x) => s + Number(x.amount || 0), 0));
 
   $("kpis").innerHTML = `
-    <div class="kpi"><div class="muted">Total group spending</div><div class="v">${moneyFmt(t.expenses)}</div></div>
-    <div class="kpi"><div class="muted">Total deposited</div><div class="v">${moneyFmt(t.deposits)}</div></div>
-    <div class="kpi"><div class="muted">Common cash on hand</div><div class="v">${moneyFmt(t.commonCash)}</div></div>
+    <div class="kpi kpi-spend"><div class="muted">Total group spending</div><div class="v neg">${moneyFmt(t.expenses)}</div></div>
+    <div class="kpi kpi-credit"><div class="muted">Total deposited</div><div class="v pos">${moneyFmt(t.deposits)}</div></div>
+    <div class="kpi"><div class="muted">Common cash on hand</div><div class="v pos">${moneyFmt(t.commonCash)}</div></div>
     <div class="kpi"><div class="muted">Repayments recorded</div><div class="v">${moneyFmt(totalSettled)}</div></div>`;
 
   renderDebtList(p, debts, "debtList");
@@ -261,15 +262,15 @@ function renderDashboard(p) {
     amt: t.holdings[person.id] || 0
   }));
   $("cashHolders").innerHTML = holders.map(h =>
-    `<div class="flex rowline"><span>${esc(h.name)}</span><span>${moneyFmt(h.amt)}</span></div>`
-  ).join("") + `<div class="flex rowline total"><span>Total</span><span>${moneyFmt(t.commonCash)}</span></div>`;
+    `<div class="flex rowline"><span>${esc(h.name)}</span><span class="pos">${moneyFmt(h.amt)}</span></div>`
+  ).join("") + `<div class="flex rowline total"><span>Total</span><span class="pos">${moneyFmt(t.commonCash)}</span></div>`;
 
   const recentSettle = (p.settlements || []).slice(-5).reverse();
   $("dashSettlements").innerHTML = recentSettle.length
     ? recentSettle.map(s => `
       <div class="flex rowline">
         <span>${esc(nameById(p, s.from))} → ${esc(nameById(p, s.to))}</span>
-        <span>${moneyFmt(s.amount)}</span>
+        <span class="neg">${moneyFmt(s.amount)}</span>
       </div>`).join("")
     : '<p class="muted">No repayments recorded yet.</p>';
 
@@ -277,14 +278,14 @@ function renderDashboard(p) {
   $("recentExpenses").innerHTML = expenses.length
     ? expenses.map(tx => {
       const splits = expenseBreakdown(p, tx);
-      const splitText = splits.map(s => `${esc(s.name)} ${moneyFmt(s.share)}`).join(", ");
+      const splitText = splits.map(s => `${esc(s.name)} <span class="neg">${moneyFmt(s.share)}</span>`).join(", ");
       return `
         <div class="expense-row">
           <div class="expense-main">
             <strong>${esc(tx.desc)}</strong>
             <span class="muted">${esc(tx.date)} · ${esc(tx.category || "—")}</span>
           </div>
-          <div class="expense-amt">${moneyFmt(tx.amount)}</div>
+          <div class="expense-amt neg">${moneyFmt(tx.amount)}</div>
           <div class="expense-meta">
             <span>Paid by ${esc(paidByLabel(p, tx))}</span>
             <span>Split: ${splitText || "Equal"}</span>
@@ -302,10 +303,10 @@ function renderDashboard(p) {
           ${r.status === "settled" ? "Settled" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
         </div>
         <div class="person-card-stats">
-          <div><span class="muted">Deposited</span><strong>${moneyFmt(r.deposited)}</strong></div>
-          <div><span class="muted">Paid expenses</span><strong>${moneyFmt(r.expensePaid)}</strong></div>
-          <div><span class="muted">Their share</span><strong>${moneyFmt(r.share)}</strong></div>
-          <div><span class="muted">Holding cash</span><strong>${moneyFmt(r.holding)}</strong></div>
+          <div><span class="muted">Deposited</span><strong class="pos">${moneyFmt(r.deposited)}</strong></div>
+          <div><span class="muted">Paid expenses</span><strong class="neg">${moneyFmt(r.expensePaid)}</strong></div>
+          <div><span class="muted">Their share</span><strong class="neg">${moneyFmt(r.share)}</strong></div>
+          <div><span class="muted">Holding cash</span><strong class="pos">${moneyFmt(r.holding)}</strong></div>
         </div>
       </div>`;
   }).join("") || '<p class="muted">Add people to see individual spending.</p>';
@@ -315,13 +316,13 @@ function renderDashboard(p) {
     return `
     <tr>
       <td><strong>${esc(r.name)}</strong></td>
-      <td>${moneyFmt(r.deposited)}</td>
-      <td>${moneyFmt(r.expensePaid)}</td>
-      <td>${moneyFmt(r.share)}</td>
-      <td>${moneyFmt(r.settledOut)}</td>
-      <td>${moneyFmt(r.settledIn)}</td>
+      <td class="pos">${moneyFmt(r.deposited)}</td>
+      <td class="neg">${moneyFmt(r.expensePaid)}</td>
+      <td class="neg">${moneyFmt(r.share)}</td>
+      <td class="neg">${moneyFmt(r.settledOut)}</td>
+      <td class="pos">${moneyFmt(r.settledIn)}</td>
       <td class="${bal.cls}">${r.status === "settled" ? "—" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}</td>
-      <td>${moneyFmt(r.holding)}</td>
+      <td class="pos">${moneyFmt(r.holding)}</td>
     </tr>`;
   }).join("");
 }
@@ -344,6 +345,12 @@ function typeLabel(tx) {
   return "Expense";
 }
 
+function amountClass(tx) {
+  if (tx.type === "deposit") return "pos";
+  if (tx.type === "expense") return "neg";
+  return "";
+}
+
 function renderTransactions(p) {
   const txs = p.transactions || [];
   const empty = !txs.length;
@@ -356,7 +363,7 @@ function renderTransactions(p) {
       <td><span class="pill type-${tx.type}">${typeLabel(tx)}</span></td>
       <td>${esc(tx.desc)}</td>
       <td>${esc(tx.category || "—")}</td>
-      <td>${moneyFmt(tx.amount, tx.currency)}</td>
+      <td class="${amountClass(tx)}">${moneyFmt(tx.amount, tx.currency)}</td>
       <td>${esc(paidByLabel(p, tx))}</td>
       <td>${esc(heldLabel(p, tx))}</td>
       <td>${esc(shareLabel(tx))}</td>
@@ -387,7 +394,7 @@ function renderSettlements(p) {
       <td>${esc(s.date)}</td>
       <td>${esc(nameById(p, s.from))}</td>
       <td>${esc(nameById(p, s.to))}</td>
-      <td>${moneyFmt(s.amount)}</td>
+      <td class="neg">${moneyFmt(s.amount)}</td>
       <td>${esc(s.note || "")}</td>
       <td class="actions">
         <button type="button" class="secondary small-btn" data-edit-s="${idx}">Edit</button>
@@ -509,24 +516,209 @@ function renderSettings() {
   if (signedIn) $("inviteProjectName").textContent = project()?.name || "this project";
 }
 
-function amountFields(people, map, prefix, { checkboxes = false } = {}) {
+function amountFields(people, map, prefix) {
   return people.map(p => `
     <div class="amtrow">
-      ${checkboxes ? `<input type="checkbox" id="${prefix}chk_${p.id}" ${map[p.id] ? "checked" : ""}>` : ""}
-      <label for="${prefix}${p.id}">${esc(p.name)}</label>
-      <input type="number" min="0" step="0.01" id="${prefix}${p.id}" value="${map[p.id] || ""}" placeholder="0">
+      <label for="${prefix}${p.id}">${esc(p.name)}<span class="amt-calc muted" id="${prefix}calc_${p.id}"></span></label>
+      <input type="number" min="0" step="0.01" id="${prefix}${p.id}" value="${map[p.id] ?? ""}" placeholder="0" class="amt-input" data-prefix="${prefix}">
     </div>`).join("");
 }
 
 function collectMap(people, prefix) {
   const m = {};
   people.forEach(p => {
-    const chk = document.getElementById(prefix + "chk_" + p.id);
-    if (chk && !chk.checked) return;
     const n = Number(document.getElementById(prefix + p.id)?.value || 0);
     if (n > 0) m[p.id] = round2(n);
   });
   return m;
+}
+
+function txModalAmount() {
+  return Number($("txAmount")?.value || 0);
+}
+
+function amountHintHtml(sum, total, unit = "₹") {
+  const rem = round2(total - sum);
+  const balanced = nearEq(rem, 0);
+  const remCls = balanced ? "pos" : rem < 0 ? "neg" : "pending";
+  const remLabel = balanced
+    ? "Balanced ✓"
+    : rem > 0
+      ? `Remaining: ${unit === "%" ? rem + "%" : moneyFmt(rem)}`
+      : `Over by: ${unit === "%" ? Math.abs(rem) + "%" : moneyFmt(Math.abs(rem))}`;
+  const sumCls = sum > total && total > 0 ? "neg" : "";
+  const sumLabel = unit === "%" ? `${round2(sum)}%` : moneyFmt(sum);
+  const totalLabel = unit === "%" ? "100%" : moneyFmt(total);
+  return `<div class="amount-hint">Assigned <span class="${sumCls}">${sumLabel}</span> / ${totalLabel} · <span class="${remCls}">${remLabel}</span></div>`;
+}
+
+function readShareInputs(people) {
+  const m = {};
+  people.forEach(p => {
+    const n = Number(document.getElementById("share_" + p.id)?.value || 0);
+    if (n > 0) m[p.id] = round2(n);
+  });
+  return m;
+}
+
+function autoFillShareFields(people, mode, force = false) {
+  if (!people.length || mode === "equal" || mode === "amount") return;
+  if (mode === "percent" && force) {
+    const each = round2(100 / people.length);
+    people.forEach((p, i) => {
+      const el = document.getElementById("share_" + p.id);
+      if (!el) return;
+      const pct = i === people.length - 1 ? round2(100 - each * (people.length - 1)) : each;
+      el.value = pct > 0 ? pct : "";
+    });
+    return;
+  }
+  if (mode === "share" && force) {
+    people.forEach(p => {
+      const el = document.getElementById("share_" + p.id);
+      if (el && !el.value) el.value = 1;
+    });
+  }
+}
+
+function renderEqualSharePreview(people, total) {
+  const el = $("shareEqualPreview");
+  if (!el) return;
+  if (!total || !people.length) {
+    el.innerHTML = '<p class="muted">Enter an amount to see the split.</p>';
+    return;
+  }
+  const each = round2(total / people.length);
+  el.innerHTML = people.map((p, i) => {
+    const amt = i === people.length - 1 ? round2(total - each * (people.length - 1)) : each;
+    return `<div class="flex rowline"><span>${esc(p.name)}</span><span class="neg">${moneyFmt(amt)}</span></div>`;
+  }).join("");
+}
+
+function updateShareCalcLabels(people, mode, total) {
+  const shares = readShareInputs(people);
+  if (!total || mode === "amount" || mode === "equal") {
+    people.forEach(p => {
+      const calc = document.getElementById("share_calc_" + p.id);
+      if (calc) { calc.textContent = ""; calc.className = "amt-calc muted"; }
+    });
+    return;
+  }
+  const fractions = alloc(people, { shareMode: mode, shares });
+  people.forEach(p => {
+    const calc = document.getElementById("share_calc_" + p.id);
+    if (!calc) return;
+    const rupees = round2(total * (fractions[p.id] || 0));
+    const hasInput = (shares[p.id] || 0) > 0;
+    calc.textContent = hasInput ? `= ${moneyFmt(rupees)}` : "";
+    calc.className = "amt-calc neg";
+  });
+}
+
+function updateTxModalHints(people) {
+  const total = txModalAmount();
+  const kind = $("txType")?.value;
+
+  if (kind === "deposit") {
+    const paySum = sumMap(collectMap(people, "pay_"));
+    const holdSum = sumMap(collectMap(people, "hold_"));
+    const payHint = $("payHint");
+    const holdHint = $("holdHint");
+    if (payHint) payHint.innerHTML = total > 0 ? amountHintHtml(paySum, total) : "";
+    if (holdHint) holdHint.innerHTML = total > 0 ? amountHintHtml(holdSum, total) : "";
+  }
+
+  if (kind === "expense") {
+    const paySum = sumMap(collectMap(people, "expay_"));
+    const payHint = $("expayHint");
+    if (payHint) payHint.innerHTML = total > 0 ? amountHintHtml(paySum, total) : "";
+
+    const mode = $("txShareMode")?.value || "equal";
+    if (mode === "equal") {
+      renderEqualSharePreview(people, total);
+    } else {
+      const shares = readShareInputs(people);
+      let assigned = 0;
+      let unit = "₹";
+      if (mode === "amount") assigned = sumMap(shares);
+      else if (mode === "percent") { assigned = sumMap(shares); unit = "%"; }
+      else if (mode === "share" && sumMap(shares) > 0) assigned = total;
+      const shareHint = $("shareHint");
+      if (shareHint) {
+        if (mode === "share") {
+          shareHint.innerHTML = total > 0
+            ? `<div class="amount-hint">Weights total <strong>${round2(sumMap(shares))}</strong> · Amounts below update from shares</div>`
+            : "";
+        } else {
+          shareHint.innerHTML = total > 0 ? amountHintHtml(assigned, mode === "percent" ? 100 : total, unit) : "";
+        }
+      }
+      updateShareCalcLabels(people, mode, total);
+    }
+  }
+}
+
+function syncTxModalVisibility() {
+  const kind = $("txType")?.value;
+  $("boxDeposit").style.display = kind === "deposit" ? "block" : "none";
+  $("boxExpense").style.display = kind === "expense" ? "block" : "none";
+  $("boxTransfer").style.display = kind === "transfer" ? "block" : "none";
+  const mode = $("txShareMode")?.value || "equal";
+  const isEqual = mode === "equal";
+  if ($("shareEqualWrap")) $("shareEqualWrap").style.display = isEqual ? "block" : "none";
+  if ($("shareFields")) $("shareFields").style.display = isEqual ? "none" : "block";
+  if ($("shareHint")) $("shareHint").style.display = isEqual ? "none" : "block";
+}
+
+function autoFillSinglePayer(people, prefix, total) {
+  if (people.length !== 1 || !total) return;
+  const el = document.getElementById(prefix + people[0].id);
+  if (el && !Number(el.value)) el.value = total;
+}
+
+function clearShareFields(people) {
+  people.forEach(p => {
+    const el = document.getElementById("share_" + p.id);
+    if (el) el.value = "";
+  });
+}
+
+function wireTxModal(people) {
+  const onAmountChange = () => {
+    const total = txModalAmount();
+    const kind = $("txType")?.value;
+    if (kind === "deposit") {
+      autoFillSinglePayer(people, "pay_", total);
+      autoFillSinglePayer(people, "hold_", total);
+    }
+    if (kind === "expense") {
+      autoFillSinglePayer(people, "expay_", total);
+    }
+    updateTxModalHints(people);
+  };
+
+  $("txAmount")?.addEventListener("input", onAmountChange);
+
+  $("txType")?.addEventListener("change", () => {
+    syncTxModalVisibility();
+    updateTxModalHints(people);
+  });
+
+  $("txShareMode")?.addEventListener("change", () => {
+    const mode = $("txShareMode").value;
+    if (mode === "amount") clearShareFields(people);
+    else autoFillShareFields(people, mode, true);
+    syncTxModalVisibility();
+    updateTxModalHints(people);
+  });
+
+  $("modalBody")?.addEventListener("input", e => {
+    if (e.target.matches(".amt-input")) updateTxModalHints(people);
+  });
+
+  autoFillShareFields(people, $("txShareMode")?.value || "equal", false);
+  syncTxModalVisibility();
+  updateTxModalHints(people);
 }
 
 /* ── Import flow ── */
@@ -658,13 +850,16 @@ function openModal(type, idx) {
         <div id="boxDeposit" class="box">
           <div class="box-title">Who paid? (can be more than one)</div>
           ${amountFields(people, payers, "pay_")}
+          <div id="payHint"></div>
           <div class="box-title">Who received / holds it?</div>
           ${amountFields(people, holders, "hold_")}
+          <div id="holdHint"></div>
         </div>
 
         <div id="boxExpense" class="box">
           <div class="box-title">Who paid? Sum must equal the amount.</div>
           ${amountFields(people, payers, "expay_")}
+          <div id="expayHint"></div>
           <label>Funding source
             <select id="txSource">
               <option value="common" ${tx.source === "common" ? "selected" : ""}>Common fund</option>
@@ -674,12 +869,19 @@ function openModal(type, idx) {
           <label>Sharing for this expense
             <select id="txShareMode">
               <option value="equal" ${tx.shareMode === "equal" ? "selected" : ""}>Equal</option>
-              <option value="amount" ${tx.shareMode === "amount" ? "selected" : ""}>Unequal ₹ (must sum to amount)</option>
+              <option value="amount" ${tx.shareMode === "amount" ? "selected" : ""}>Unequal ₹ (enter each person's share)</option>
               <option value="percent" ${tx.shareMode === "percent" ? "selected" : ""}>Percentages (normalized)</option>
               <option value="share" ${tx.shareMode === "share" ? "selected" : ""}>Shares / head-count (e.g. 2 : 3 : 1)</option>
             </select>
           </label>
-          <div id="shareBox">${amountFields(people, tx.shares || {}, "share_")}</div>
+          <div id="shareBox">
+            <div id="shareEqualWrap">
+              <div class="box-title">Equal split preview</div>
+              <div id="shareEqualPreview" class="share-preview"></div>
+            </div>
+            <div id="shareFields">${amountFields(people, tx.shares || {}, "share_")}</div>
+            <div id="shareHint"></div>
+          </div>
         </div>
 
         <div id="boxTransfer" class="box">
@@ -693,17 +895,7 @@ function openModal(type, idx) {
           </div>
         </div>
       </div>`;
-    const sync = () => {
-      const kind = $("txType").value;
-      $("boxDeposit").style.display = kind === "deposit" ? "block" : "none";
-      $("boxExpense").style.display = kind === "expense" ? "block" : "none";
-      $("boxTransfer").style.display = kind === "transfer" ? "block" : "none";
-      const mode = $("txShareMode")?.value;
-      $("shareBox").style.display = mode && mode !== "equal" ? "block" : "none";
-    };
-    $("txType").addEventListener("change", sync);
-    $("txShareMode").addEventListener("change", sync);
-    sync();
+    wireTxModal(people);
   } else if (type === "settlement") {
     if (!people.length) {
       alert("Add people before recording a settlement.");
