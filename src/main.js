@@ -1,6 +1,6 @@
 import {
   uid, moneyFmt, nameById, shareLabel, payerMap, holderMap,
-  totals, enrichedParticipantRows, simplify, expenseBreakdown,
+  totals, enrichedParticipantRows, simplify,
   validateTransaction, validateSettlement, personUsage, nearEq, round2,
   alloc, sumMap
 } from "./core.js";
@@ -94,6 +94,8 @@ function attach() {
   $("addProject").addEventListener("click", () => openModal("project", null));
   $("exportReport")?.addEventListener("click", handleExport);
   $("exportTx")?.addEventListener("click", handleExport);
+  $("txFilterPerson")?.addEventListener("change", () => renderTransactions(project()));
+  $("txFilterCategory")?.addEventListener("change", () => renderTransactions(project()));
   $("modalCancel").addEventListener("click", closeModal);
   $("modalSave").addEventListener("click", saveModal);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
@@ -222,6 +224,55 @@ function balanceLabel(net) {
   return { text: "settled", cls: "settled" };
 }
 
+function commonFundPaid(r) {
+  return round2(Math.max(0, r.expensePaid - (r.pocketPaid || 0)));
+}
+
+function paidVsShareLabel(r) {
+  const diff = round2(r.expensePaid - r.share);
+  if (nearEq(diff, 0)) return { text: "Even", cls: "settled", diff: 0 };
+  if (diff > 0) return { text: `Paid ${moneyFmt(diff)} extra`, cls: "pos", diff };
+  return { text: `${moneyFmt(Math.abs(diff))} less`, cls: "neg", diff };
+}
+
+function txInvolvesPerson(p, tx, personId) {
+  if (!personId) return true;
+  if (tx.type === "transfer") return tx.from === personId || tx.to === personId;
+  if (tx.type === "deposit") {
+    return personId in payerMap(tx) || personId in holderMap(tx);
+  }
+  if (tx.type === "expense") return personId in payerMap(tx);
+  return false;
+}
+
+function collectCategories(p) {
+  const cats = new Set();
+  (p.transactions || []).forEach(tx => {
+    const c = (tx.category || "").trim();
+    if (c) cats.add(c);
+  });
+  return [...cats].sort((a, b) => a.localeCompare(b));
+}
+
+function renderTxFilters(p) {
+  const personSel = $("txFilterPerson");
+  const catSel = $("txFilterCategory");
+  if (!personSel || !catSel) return;
+
+  const personVal = personSel.value;
+  const catVal = catSel.value;
+
+  personSel.innerHTML = `<option value="">All people</option>` +
+    (p.people || []).map(pe => `<option value="${esc(pe.id)}">${esc(pe.name)}</option>`).join("");
+  catSel.innerHTML = `<option value="">All categories</option>` +
+    collectCategories(p).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+
+  personSel.value = personVal;
+  if (!personSel.value && personVal) personSel.value = "";
+  catSel.value = catVal;
+  if (!catSel.value && catVal) catSel.value = "";
+}
+
 function renderDebtList(p, debts, elId) {
   const el = $(elId);
   if (!debts.length) {
@@ -268,51 +319,63 @@ function renderDashboard(p) {
       </div>`).join("")
     : '<p class="muted">No repayments recorded yet.</p>';
 
-  const expenses = (p.transactions || []).filter(tx => tx.type === "expense").slice(-8).reverse();
-  $("recentExpenses").innerHTML = expenses.length
-    ? expenses.map(tx => {
-      const splits = expenseBreakdown(p, tx);
-      const splitText = splits.map(s => `${esc(s.name)} <span class="neg">${moneyFmt(s.share)}</span>`).join(", ");
-      return `
-        <div class="expense-row">
-          <div class="expense-main">
-            <strong>${esc(tx.desc)}</strong>
-            <span class="muted">${esc(tx.date)} · ${esc(tx.category || "—")}</span>
-          </div>
-          <div class="expense-amt neg">${moneyFmt(tx.amount)}</div>
-          <div class="expense-meta">
-            <span>Paid by ${esc(paidByLabel(p, tx))}</span>
-            <span>Split: ${splitText || "Equal"}</span>
-          </div>
-        </div>`;
-    }).join("")
-    : '<p class="muted">No expenses yet.</p>';
-
   $("personCards").innerHTML = rows.map(r => {
     const bal = balanceLabel(r.net);
+    const vs = paidVsShareLabel(r);
+    const commonPaid = commonFundPaid(r);
     return `
       <div class="person-card">
         <div class="person-card-name">${esc(r.name)}</div>
         <div class="person-card-balance ${bal.cls}">
-          ${r.status === "settled" ? "Settled" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
+          ${r.status === "settled" ? "Settled up" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
         </div>
         <div class="person-card-stats">
-          <div><span class="muted">Deposited</span><strong class="pos">${moneyFmt(r.deposited)}</strong></div>
-          <div><span class="muted">Paid expenses</span><strong class="neg">${moneyFmt(r.expensePaid)}</strong></div>
-          <div><span class="muted">Their share</span><strong class="neg">${moneyFmt(r.share)}</strong></div>
-          <div><span class="muted">Holding cash</span><strong class="pos">${moneyFmt(r.holding)}</strong></div>
+          <div class="stat-block">
+            <span class="stat-label">Advance deposited</span>
+            <span class="stat-hint">Put into common pot</span>
+            <strong class="pos">${moneyFmt(r.deposited)}</strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Paid from pocket</span>
+            <span class="stat-hint">Own money for bills</span>
+            <strong class="neg">${moneyFmt(r.pocketPaid || 0)}</strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Paid via common fund</span>
+            <span class="stat-hint">Bills from shared cash</span>
+            <strong class="neg">${moneyFmt(commonPaid)}</strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Fair share of spending</span>
+            <span class="stat-hint">Their portion of all expenses</span>
+            <strong class="neg">${moneyFmt(r.share)}</strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Extra / less on bills</span>
+            <span class="stat-hint">Paid vs fair share</span>
+            <strong class="${vs.cls}">${vs.text}</strong>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Holding cash</span>
+            <span class="stat-hint">Common cash in hand</span>
+            <strong class="pos">${moneyFmt(r.holding)}</strong>
+          </div>
         </div>
       </div>`;
   }).join("") || '<p class="muted">Add people to see individual spending.</p>';
 
   $("personSummary").innerHTML = rows.map(r => {
     const bal = balanceLabel(r.net);
+    const vs = paidVsShareLabel(r);
+    const commonPaid = commonFundPaid(r);
     return `
     <tr>
       <td><strong>${esc(r.name)}</strong></td>
       <td class="pos">${moneyFmt(r.deposited)}</td>
-      <td class="neg">${moneyFmt(r.expensePaid)}</td>
+      <td class="neg">${moneyFmt(r.pocketPaid || 0)}</td>
+      <td class="neg">${moneyFmt(commonPaid)}</td>
       <td class="neg">${moneyFmt(r.share)}</td>
+      <td class="${vs.cls}">${vs.text}</td>
       <td class="neg">${moneyFmt(r.settledOut)}</td>
       <td class="pos">${moneyFmt(r.settledIn)}</td>
       <td class="${bal.cls}">${r.status === "settled" ? "—" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}</td>
@@ -346,12 +409,34 @@ function amountClass(tx) {
 }
 
 function renderTransactions(p) {
+  renderTxFilters(p);
   const txs = p.transactions || [];
-  const empty = !txs.length;
-  $("txTable").closest(".table").hidden = empty;
-  $("txEmpty").hidden = !empty;
+  const personId = $("txFilterPerson")?.value || "";
+  const category = $("txFilterCategory")?.value || "";
+  const filtered = txs
+    .map((tx, idx) => ({ tx, idx }))
+    .filter(({ tx }) => txInvolvesPerson(p, tx, personId))
+    .filter(({ tx }) => !category || (tx.category || "").trim() === category);
 
-  $("txTable").innerHTML = txs.map((tx, idx) => `
+  const empty = !txs.length;
+  const noMatches = txs.length > 0 && !filtered.length;
+  $("txTable").closest(".table").hidden = empty || noMatches;
+  $("txEmpty").hidden = !empty;
+  const status = $("txFilterStatus");
+  if (status) {
+    if (noMatches) {
+      status.hidden = false;
+      status.textContent = "No transactions match these filters.";
+    } else if (personId || category) {
+      status.hidden = false;
+      status.textContent = `Showing ${filtered.length} of ${txs.length} transaction(s).`;
+    } else {
+      status.hidden = true;
+      status.textContent = "";
+    }
+  }
+
+  $("txTable").innerHTML = filtered.map(({ tx, idx }) => `
     <tr>
       <td>${esc(tx.date)}</td>
       <td><span class="pill type-${tx.type}">${typeLabel(tx)}</span></td>

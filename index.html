@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#312e81">
   <title>FunToSplit — Shared project finance</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
   <div id="banner" class="banner" hidden></div>
@@ -89,31 +89,30 @@
               <div id="dashSettlements"></div>
             </div>
           </div>
-          <div class="card">
-            <h2>Recent expenses &amp; how they were split</h2>
-            <div id="recentExpenses"></div>
-          </div>
         </div>
 
         <div id="dashPeople" hidden>
           <div class="card">
             <h2>Everyone at a glance</h2>
-            <p class="muted">Deposits, what each person paid, their fair share of expenses, and final balance.</p>
+            <p class="muted">How each person contributed, what they paid from pocket vs common fund, their fair share of total spending, and whether they paid extra or less on bills.</p>
             <div id="personCards" class="person-grid"></div>
           </div>
           <div class="card">
             <h2>Detailed breakdown</h2>
+            <p class="muted">Advance = money put into the group. Pocket = paid bills with own money. Common fund = paid bills using shared cash. Fair share = their portion of all expenses. Extra/less = difference between what they paid for bills and their fair share.</p>
             <div class="table">
-              <table>
+              <table class="person-table">
                 <thead>
                   <tr>
                     <th>Person</th>
-                    <th>Deposited</th>
-                    <th>Paid for expenses</th>
-                    <th>Their share</th>
+                    <th>Advance deposited</th>
+                    <th>Paid from pocket</th>
+                    <th>Paid via common fund</th>
+                    <th>Fair share of spending</th>
+                    <th>Extra / less on bills</th>
                     <th>Repaid others</th>
                     <th>Received repayments</th>
-                    <th>Balance</th>
+                    <th>Net balance</th>
                     <th>Holding cash</th>
                   </tr>
                 </thead>
@@ -136,6 +135,15 @@
             <b>Expense</b> — money leaving the group (common fund or pocket).
             <b>Cash move</b> — changes who holds common cash.
           </p>
+          <div class="tx-filters">
+            <label>Filter by person
+              <select id="txFilterPerson"><option value="">All people</option></select>
+            </label>
+            <label>Filter by category
+              <select id="txFilterCategory"><option value="">All categories</option></select>
+            </label>
+          </div>
+          <p id="txFilterStatus" class="muted small" hidden></p>
           <div class="table">
             <table>
               <thead>
@@ -273,6 +281,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js?v=13"></script>
+  <script type="module" src="src/main.js?v=14"></script>
 </body>
 </html>
