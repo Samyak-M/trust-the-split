@@ -1,4 +1,4 @@
-# StallSplit — Shared Project Finance Tracker
+# Trust the Split — Shared Project Finance Tracker
 
 A lightweight expense-splitting app for groups running a project (a food stall, a trip, a puja). It models **money movement**, not a spreadsheet:
 
