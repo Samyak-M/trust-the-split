@@ -127,3 +127,13 @@ grant select, insert, update, delete on public.projects to authenticated;
 grant select, insert, update, delete on public.project_members to authenticated;
 grant select, insert, delete on public.project_invites to authenticated;
 grant execute on function public.claim_project_invites() to authenticated;
+
+-- Enable Realtime for live sync (safe to re-run)
+do $$
+begin
+  alter publication supabase_realtime add table public.projects;
+exception
+  when duplicate_object then null;
+  when others then
+    if sqlerrm not like '%already member%' then raise; end if;
+end $$;

@@ -8,7 +8,8 @@
     "dev": "http-server -p 8000 -c-1 -o",
     "start": "http-server -p 8000",
     "serve": "python3 -m http.server 8000",
-    "test": "node src/core.test.js"
+    "test": "node src/core.test.js",
+    "setup:supabase": "node scripts/setup-supabase.mjs"
   },
   "keywords": [
     "expense-splitting",

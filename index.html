@@ -16,17 +16,17 @@
         <select id="projectSelect"></select>
       </div>
       <button class="nav active" data-view="dashboard">📊 <span>Dashboard</span></button>
-      <button class="nav" data-view="transactions">🧾 <span>Money movement</span></button>
+      <button class="nav" data-view="transactions">🧾 <span>Transactions</span></button>
       <button class="nav" data-view="balances">💸 <span>Who pays whom</span></button>
       <button class="nav" data-view="settlements">✓ <span>Settlements</span></button>
       <button class="nav" data-view="people">👥 <span>People</span></button>
       <button class="nav" data-view="projects">📁 <span>Projects</span></button>
-      <button class="nav" data-view="settings">⚙️ <span>Sharing &amp; login</span></button>
+      <button class="nav" data-view="settings">🔗 <span>Share</span></button>
     </aside>
 
     <nav class="mobile-nav" aria-label="Main">
       <button class="nav active" data-view="dashboard">Dash</button>
-      <button class="nav" data-view="transactions">Money</button>
+      <button class="nav" data-view="transactions">Txns</button>
       <button class="nav" data-view="balances">Settle</button>
       <button class="nav" data-view="people">People</button>
       <button class="nav" data-view="settings">Share</button>
@@ -38,7 +38,7 @@
           <h1 id="title">StallSplit</h1>
           <div id="subtitle" class="muted"></div>
         </div>
-        <div id="authChip" class="muted small"></div>
+        <div id="authArea" class="auth-area"></div>
       </div>
 
       <section id="dashboard" class="view active">
@@ -75,14 +75,15 @@
 
       <section id="transactions" class="view">
         <div class="card">
-          <div class="flex">
-            <h2 class="grow">Deposits, expenses &amp; cash moves</h2>
+          <div class="flex toolbar">
+            <h2 class="grow">Transactions</h2>
+            <button type="button" class="secondary" id="importTx">Import CSV / Excel</button>
             <button type="button" id="addTx">+ Add</button>
           </div>
           <p class="muted">
-            <b>Deposit</b> is advance into the common pot (who paid → who holds it).
-            <b>Expense</b> is money leaving the group, from the common fund or from someone’s pocket.
-            <b>Cash move</b> only changes who is holding common cash.
+            <b>Deposit</b> — advance into the common pot.
+            <b>Expense</b> — money leaving the group (common fund or pocket).
+            <b>Cash move</b> — changes who holds common cash.
           </p>
           <div class="table">
             <table>
@@ -101,6 +102,14 @@
               </thead>
               <tbody id="txTable"></tbody>
             </table>
+          </div>
+          <div id="txEmpty" class="empty-state" hidden>
+            <p>No transactions yet.</p>
+            <p class="muted">Add one at a time, or import your existing spreadsheet.</p>
+            <div class="flex" style="justify-content:center;margin-top:12px">
+              <button type="button" class="secondary" id="importTxEmpty">Import CSV / Excel</button>
+              <button type="button" id="addTxEmpty">+ Add transaction</button>
+            </div>
           </div>
         </div>
       </section>
@@ -149,14 +158,15 @@
 
       <section id="projects" class="view">
         <div class="card">
-          <div class="flex">
+          <div class="flex toolbar">
             <h2 class="grow">Projects / groups</h2>
+            <button type="button" class="secondary" id="importProject">Import from file</button>
             <button type="button" id="addProject">+ New project</button>
           </div>
-          <p class="muted">Each project has its own people and books.</p>
+          <p class="muted">Each project has its own people and books. Start fresh or import an existing Excel / CSV spreadsheet.</p>
           <div class="table">
             <table>
-              <thead><tr><th>Project</th><th>Description</th><th>People</th><th></th></tr></thead>
+              <thead><tr><th>Project</th><th>Description</th><th>People</th><th>Transactions</th><th></th></tr></thead>
               <tbody id="projectTable"></tbody>
             </table>
           </div>
@@ -164,9 +174,30 @@
       </section>
 
       <section id="settings" class="view">
-        <div class="card">
-          <h2>One shared copy (GitHub Pages + Supabase)</h2>
-          <p class="muted">Without this, data stays in this browser only. Connect a Supabase project so everyone sees the same books.</p>
+        <div id="syncStatus" class="card"></div>
+
+        <div class="card" id="signInCard">
+          <h2>Sign in to sync with your group</h2>
+          <p class="muted">We'll email you a one-click sign-in link. No password needed.</p>
+          <div class="flex auth-row">
+            <input id="authEmail" type="email" placeholder="you@email.com" class="grow-input">
+            <button type="button" id="sendMagic">Send sign-in link</button>
+          </div>
+          <p id="authStatus" class="muted auth-status"></p>
+        </div>
+
+        <div class="card" id="inviteCard" hidden>
+          <h2>Invite someone to <span id="inviteProjectName"></span></h2>
+          <p class="muted">They sign in with the same email and the project appears in their list.</p>
+          <div class="flex auth-row">
+            <input id="inviteEmail" type="email" placeholder="teammate@email.com" class="grow-input">
+            <button type="button" id="inviteBtn">Send invite</button>
+          </div>
+        </div>
+
+        <details class="card advanced-settings" id="advancedSettings">
+          <summary>Advanced: Supabase connection</summary>
+          <p class="muted">Only needed if cloud sync isn't pre-configured. Paste your Supabase project URL and anon key.</p>
           <div class="formgrid">
             <label>Supabase URL<input id="sbUrl" placeholder="https://xxxx.supabase.co"></label>
             <label>Anon public key<input id="sbKey" placeholder="eyJ..."></label>
@@ -175,25 +206,7 @@
             <button type="button" id="saveRemote">Save connection</button>
             <button type="button" class="secondary" id="clearRemote">Use this browser only</button>
           </div>
-        </div>
-        <div class="card">
-          <h2>Sign in</h2>
-          <p class="muted">Magic link email. Add the same URL under Authentication → URL configuration in Supabase (Redirect URLs).</p>
-          <div class="flex">
-            <input id="authEmail" type="email" placeholder="you@email.com" style="flex:1">
-            <button type="button" id="sendMagic">Send magic link</button>
-            <button type="button" class="secondary" id="signOutBtn">Sign out</button>
-          </div>
-          <p id="authStatus" class="muted" style="margin-top:10px"></p>
-        </div>
-        <div class="card">
-          <h2>Invite someone to this project</h2>
-          <p class="muted">They sign in with that email, then the project appears for them.</p>
-          <div class="flex">
-            <input id="inviteEmail" type="email" placeholder="teammate@email.com" style="flex:1">
-            <button type="button" id="inviteBtn">Invite</button>
-          </div>
-        </div>
+        </details>
       </section>
     </main>
   </div>
@@ -209,6 +222,8 @@
       </div>
     </div>
   </div>
+
+  <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls" hidden>
 
   <script type="module" src="src/main.js"></script>
 </body>
