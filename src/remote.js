@@ -87,17 +87,23 @@ export async function getClient() {
   }
   const key = cfg.url + "|" + cfg.anonKey;
   if (client && clientKey === key) return client;
-  const { createClient } = await import(SB_ESM);
-  client = createClient(cfg.url, cfg.anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false,
-      storage: window.localStorage
-    }
-  });
-  clientKey = key;
-  return client;
+  try {
+    const { createClient } = await import(SB_ESM);
+    client = createClient(cfg.url, cfg.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storage: window.localStorage
+      }
+    });
+    clientKey = key;
+    return client;
+  } catch {
+    client = null;
+    clientKey = "";
+    return null;
+  }
 }
 
 export async function getSession() {
@@ -110,14 +116,16 @@ export async function getSession() {
 export function subscribeAuth(onChange) {
   if (authUnsub) authUnsub();
   authUnsub = null;
-  return getClient().then(sb => {
-    if (!sb) return () => {};
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, sess) => {
-      onChange(sess);
-    });
-    authUnsub = () => subscription.unsubscribe();
-    return authUnsub;
-  });
+  return getClient()
+    .then(sb => {
+      if (!sb) return () => {};
+      const { data: { subscription } } = sb.auth.onAuthStateChange((_event, sess) => {
+        onChange(sess);
+      });
+      authUnsub = () => subscription.unsubscribe();
+      return authUnsub;
+    })
+    .catch(() => () => {});
 }
 
 export async function signInWithEmail(email) {

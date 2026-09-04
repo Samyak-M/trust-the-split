@@ -853,38 +853,45 @@ async function refreshAuth() {
         showBanner(`${authError} Request a new link from Share.`, true);
       }
     }
+
+    unsub();
+    if (session) {
+      try {
+        await loadFromRemote();
+        unsub = await subscribeProjects(() => {
+          if (modal.type) return;
+          loadFromRemote();
+        });
+      } catch (e) {
+        showBanner(e.message || "Could not sync with cloud", true);
+      }
+    }
+
+    unsubAuth = await subscribeAuth(async (s) => {
+      const wasOut = !session && s;
+      session = s;
+      if (!s) {
+        unsub();
+        unsub = () => {};
+      } else if (wasOut) {
+        try {
+          await loadFromRemote();
+          unsub = await subscribeProjects(() => {
+            if (modal.type) return;
+            loadFromRemote();
+          });
+        } catch { /* ignore */ }
+      }
+      renderAuthArea();
+      renderSettings();
+      renderAll();
+    });
   } catch {
     session = null;
-  }
-
-  unsub();
-  if (session) {
-    await loadFromRemote();
-    unsub = await subscribeProjects(() => {
-      if (modal.type) return;
-      loadFromRemote();
-    });
-  }
-
-  unsubAuth = await subscribeAuth(async (s) => {
-    const wasOut = !session && s;
-    session = s;
-    if (!s) {
-      unsub();
-      unsub = () => {};
-    } else if (wasOut) {
-      await loadFromRemote();
-      unsub = await subscribeProjects(() => {
-        if (modal.type) return;
-        loadFromRemote();
-      });
-    }
+  } finally {
     renderAuthArea();
     renderSettings();
-  });
-
-  renderAuthArea();
-  renderSettings();
+  }
 }
 
 window.db = db;
@@ -892,4 +899,5 @@ window.render = renderAll;
 
 applyBuiltinConfig();
 attach();
-refreshAuth().then(() => renderAll());
+renderAll();
+refreshAuth().then(() => renderAll()).catch(() => renderAll());
