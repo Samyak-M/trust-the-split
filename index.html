@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>StallSplit — Shared project finance</title>
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <div id="banner" class="banner" hidden></div>
@@ -47,6 +47,10 @@
       </div>
 
       <section id="dashboard" class="view active">
+        <div class="flex toolbar dash-toolbar">
+          <div class="grow"></div>
+          <button type="button" class="secondary" id="exportReport">Export report</button>
+        </div>
         <div id="kpis" class="grid kpi-grid"></div>
 
         <div class="dash-tabs" id="dashTabs">
@@ -110,7 +114,7 @@
         <div class="card">
           <div class="flex toolbar">
             <h2 class="grow">Transactions</h2>
-            <button type="button" class="secondary" id="importTx">Import file</button>
+            <button type="button" class="secondary" id="exportTx">Export report</button>
             <button type="button" id="addTx">+ Add</button>
           </div>
           <p class="muted">
@@ -138,9 +142,8 @@
           </div>
           <div id="txEmpty" class="empty-state" hidden>
             <p>No transactions yet.</p>
-            <p class="muted">Add one at a time, or import your existing spreadsheet.</p>
+            <p class="muted">Add your first deposit or expense to get started.</p>
             <div class="flex" style="justify-content:center;margin-top:12px">
-              <button type="button" class="secondary" id="importTxEmpty">Import file</button>
               <button type="button" id="addTxEmpty">+ Add transaction</button>
             </div>
           </div>
@@ -193,10 +196,9 @@
         <div class="card">
           <div class="flex toolbar">
             <h2 class="grow">Projects / groups</h2>
-            <button type="button" class="secondary" id="importProject">Import from file</button>
             <button type="button" id="addProject">+ New project</button>
           </div>
-          <p class="muted">Each project has its own people and books. Start fresh or import a spreadsheet — columns are detected automatically.</p>
+          <p class="muted">Each project has its own people and books.</p>
           <div class="table">
             <table>
               <thead><tr><th>Project</th><th>Description</th><th>People</th><th>Transactions</th><th></th></tr></thead>
@@ -256,8 +258,6 @@
     </div>
   </div>
 
-  <input type="file" id="fileInput" accept=".csv,.tsv,.xlsx,.xls" hidden>
-
-  <script type="module" src="src/main.js?v=9"></script>
+  <script type="module" src="src/main.js?v=10"></script>
 </body>
 </html>

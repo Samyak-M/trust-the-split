@@ -583,38 +583,9 @@ label input, label select {
 
 .empty-state p { margin: 4px 0; }
 
-/* ── Import / dropzone ── */
-.dropzone {
-  border: 2px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 20px;
-  text-align: center;
-  background: #fafbfc;
+.dash-toolbar {
+  margin-bottom: 4px;
 }
-
-.dropzone p { margin: 0 0 8px; font-weight: 500; }
-
-/* ── Choice cards (project creation) ── */
-.choice-cards { margin-top: 8px; }
-
-.choice-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-  background: #fafbfc;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-top: 8px;
-  cursor: pointer;
-  transition: border-color .15s, background .15s;
-}
-
-.choice-card:hover { border-color: var(--blue); background: #eef2ff; }
-.choice-icon { font-size: 28px; }
 
 /* ── Sync banner ── */
 .sync-banner {

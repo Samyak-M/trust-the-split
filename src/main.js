@@ -11,10 +11,7 @@ import {
   inviteToProject, subscribeProjects, subscribeAuth
 } from "./remote.js";
 import { SUPABASE } from "./config.js";
-import {
-  parseFile, detectColumns, rowsToTransactions, extractPeopleFromRows,
-  canAutoImport
-} from "./import.js";
+import { exportProjectReport } from "./export.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
@@ -23,7 +20,6 @@ const CATEGORIES = ["groceries", "food", "misc", "transport", "supplies", "other
 let db = loadLocalDB();
 let session = null;
 let modal = { type: null, idx: null };
-let importState = { rows: [], headers: [], columnMap: {}, target: "project" };
 let unsub = () => {};
 let unsubAuth = () => {};
 let persistTimer = 0;
@@ -95,9 +91,8 @@ function attach() {
   $("addSettlement").addEventListener("click", () => openModal("settlement", null));
   $("addPerson").addEventListener("click", () => openModal("person", null));
   $("addProject").addEventListener("click", () => openModal("project", null));
-  $("importTx").addEventListener("click", () => startImport("current"));
-  $("importTxEmpty")?.addEventListener("click", () => startImport("current"));
-  $("importProject").addEventListener("click", () => startImport("new"));
+  $("exportReport")?.addEventListener("click", handleExport);
+  $("exportTx")?.addEventListener("click", handleExport);
   $("modalCancel").addEventListener("click", closeModal);
   $("modalSave").addEventListener("click", saveModal);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
@@ -125,8 +120,6 @@ function attach() {
       $("authStatus").textContent = e.message;
     }
   });
-
-  $("fileInput").addEventListener("change", onFileSelected);
 
   $("dashTabs")?.addEventListener("click", e => {
     const tab = e.target.closest("[data-dash]");
@@ -721,83 +714,16 @@ function wireTxModal(people) {
   updateTxModalHints(people);
 }
 
-/* ── Import flow ── */
-
-function startImport(target) {
-  importState = { rows: [], headers: [], columnMap: {}, target };
-  $("fileInput").value = "";
-  $("fileInput").click();
-}
-
-async function onFileSelected(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  showBanner(`Reading ${file.name}…`);
+async function handleExport() {
+  const p = project();
+  if (!p) return;
+  showBanner("Preparing Excel report…");
   try {
-    const { headers, rows } = await parseFile(file);
-    if (!rows.length) {
-      showBanner("No data rows found in the file.", true);
-      return;
-    }
-    const columnMap = detectColumns(headers, rows);
-    if (!canAutoImport(columnMap)) {
-      showBanner("Couldn't read your file — make sure it has an Amount column (or similar: cost, total, debit).", true);
-      return;
-    }
-    importState = {
-      target: importState.target,
-      rows,
-      headers,
-      columnMap,
-      fileName: file.name
-    };
-    applyImport({ createPeople: true });
-  } catch (err) {
-    showBanner(err.message || "Could not read file", true);
-  } finally {
-    $("fileInput").value = "";
+    await exportProjectReport(p);
+    showBanner(`Report downloaded for ${p.name}.`);
+  } catch (e) {
+    showBanner(e.message || "Could not export report", true);
   }
-}
-
-function applyImport({ createPeople = true } = {}) {
-  const isNew = importState.target === "new";
-  const existingPeople = isNew ? [] : (project().people || []);
-  const { transactions, people, errors } = rowsToTransactions(
-    importState.rows, importState.columnMap, existingPeople, { createPeople }
-  );
-
-  if (!transactions.length) {
-    showBanner(errors[0] || "No valid transactions found in the file.", true);
-    return;
-  }
-
-  if (isNew) {
-    const name = importState.fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
-    const desc = `Imported from ${importState.fileName}`;
-    const np = { id: uid(), name, desc, people, transactions, settlements: [] };
-    db.projects.push(np);
-    db.current = np.id;
-  } else {
-    const p = project();
-    if (createPeople) {
-      const existingIds = new Set(p.people.map(x => x.id));
-      people.forEach(person => {
-        if (!existingIds.has(person.id)) p.people.push(person);
-      });
-    }
-    p.transactions.push(...transactions);
-  }
-
-  const peopleNames = extractPeopleFromRows(importState.rows, importState.columnMap);
-  let msg = `Imported ${transactions.length} transaction(s) from ${importState.fileName}.`;
-  if (peopleNames.length) msg += ` People: ${peopleNames.join(", ")}.`;
-  if (errors.length) msg += ` ${errors.length} row(s) skipped.`;
-  showBanner(msg, errors.length > 0);
-
-  persist();
-  renderAll();
-  closeModal();
-  if (isNew) setView("transactions");
 }
 
 /* ── Modals ── */
@@ -925,19 +851,7 @@ function openModal(type, idx) {
       <div class="stack">
         <label>Name<input id="projectName" value="${esc(pr.name)}"></label>
         <label>Description<input id="projectDesc" value="${esc(pr.desc || "")}"></label>
-        ${idx == null ? `
-          <div class="choice-cards">
-            <p class="muted">Or import your existing spreadsheet instead:</p>
-            <button type="button" class="choice-card" id="projectImportBtn">
-              <span class="choice-icon">📄</span>
-              <span><strong>Import from CSV / Excel</strong><br><span class="muted">Bring in people and transactions from a spreadsheet</span></span>
-            </button>
-          </div>` : ""}
       </div>`;
-    $("projectImportBtn")?.addEventListener("click", () => {
-      closeModal();
-      startImport("new");
-    });
   }
 
   $("modal").classList.add("show");
@@ -956,8 +870,6 @@ function err(msg) {
 }
 
 function saveModal() {
-  if (modal.type === "import") return applyImport(); // legacy — import is now automatic on file pick
-
   const p = project();
   const { type, idx } = modal;
   $("modalError").hidden = true;
