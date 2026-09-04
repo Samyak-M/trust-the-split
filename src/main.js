@@ -11,7 +11,8 @@ import {
 } from "./remote.js";
 import { SUPABASE } from "./config.js";
 import {
-  parseFile, detectColumns, rowsToTransactions, extractPeopleFromRows, downloadTemplate
+  parseFile, detectColumns, rowsToTransactions, extractPeopleFromRows,
+  canAutoImport
 } from "./import.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -482,98 +483,25 @@ async function onFileSelected(e) {
       showBanner("No data rows found in the file.", true);
       return;
     }
+    const columnMap = detectColumns(headers, rows);
+    if (!canAutoImport(columnMap)) {
+      showBanner("Couldn't read your file — make sure it has an Amount column (or similar: cost, total, debit).", true);
+      return;
+    }
     importState = {
-      ...importState,
+      target: importState.target,
       rows,
       headers,
-      columnMap: detectColumns(headers),
+      columnMap,
       fileName: file.name
     };
-    openImportModal();
+    applyImport({ createPeople: true });
   } catch (err) {
     showBanner(err.message || "Could not read file", true);
   }
 }
 
-function columnSelect(field, label) {
-  const map = importState.columnMap;
-  const opts = `<option value="">— skip —</option>` +
-    importState.headers.map(h =>
-      `<option value="${esc(h)}" ${map[field] === h ? "selected" : ""}>${esc(h)}</option>`
-    ).join("");
-  return `<label>${label}<select data-col="${field}">${opts}</select></label>`;
-}
-
-function renderImportPreview() {
-  const { rows, headers } = importState;
-  const preview = rows.slice(0, 5);
-  const ths = headers.map(h => `<th>${esc(h)}</th>`).join("");
-  const trs = preview.map(row =>
-    `<tr>${headers.map(h => `<td>${esc(row[h])}</td>`).join("")}</tr>`
-  ).join("");
-  return `
-    <p class="muted">${rows.length} row(s) found in <b>${esc(importState.fileName)}</b>. Showing first ${preview.length}.</p>
-    <div class="table preview-table"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`;
-}
-
-function openImportModal() {
-  modal = { type: "import", idx: null };
-  const isNew = importState.target === "new";
-  $("modalTitle").textContent = isNew ? "Import new project from file" : "Import transactions";
-  $("modalError").hidden = true;
-
-  const peopleNames = extractPeopleFromRows(importState.rows, importState.columnMap);
-  $("modalBody").innerHTML = `
-    <div class="stack">
-      ${isNew ? `
-        <div class="formgrid">
-          <label>Project name<input id="importProjectName" placeholder="Goa Trip"></label>
-          <label>Description<input id="importProjectDesc" placeholder="Optional"></label>
-        </div>` : ""}
-      <div class="dropzone" id="dropzone">
-        <p>📄 ${esc(importState.fileName)}</p>
-        <button type="button" class="secondary small-btn" id="changeFile">Choose different file</button>
-      </div>
-      ${renderImportPreview()}
-      <div class="box">
-        <div class="box-title">Map columns</div>
-        <div class="formgrid">
-          ${columnSelect("date", "Date")}
-          ${columnSelect("type", "Type (deposit / expense / transfer)")}
-          ${columnSelect("description", "Description")}
-          ${columnSelect("amount", "Amount")}
-          ${columnSelect("category", "Category")}
-          ${columnSelect("paidBy", "Paid by")}
-          ${columnSelect("heldBy", "Held by / To")}
-          ${columnSelect("source", "Funding source")}
-          ${columnSelect("shareMode", "Sharing")}
-        </div>
-      </div>
-      <label class="check"><input type="checkbox" id="importCreatePeople" checked> Create people automatically from "Paid by" / "Held by" columns</label>
-      ${peopleNames.length ? `<p class="muted">People detected: ${peopleNames.map(esc).join(", ")}</p>` : ""}
-      <button type="button" class="secondary small-btn" id="downloadTemplate">Download CSV template</button>
-    </div>`;
-
-  $("modalBody").querySelectorAll("[data-col]").forEach(sel => {
-    sel.addEventListener("change", () => {
-      importState.columnMap[sel.dataset.col] = sel.value || undefined;
-      const names = extractPeopleFromRows(importState.rows, importState.columnMap);
-      const hint = $("modalBody").querySelector(".people-hint");
-      if (hint) hint.textContent = names.length ? `People detected: ${names.join(", ")}` : "";
-    });
-  });
-  $("changeFile").addEventListener("click", () => {
-    closeModal();
-    startImport(importState.target);
-  });
-  $("downloadTemplate").addEventListener("click", downloadTemplate);
-
-  $("modal").classList.add("show");
-  $("modal").style.display = "flex";
-}
-
-function saveImport() {
-  const createPeople = $("importCreatePeople")?.checked ?? true;
+function applyImport({ createPeople = true } = {}) {
   const isNew = importState.target === "new";
   const existingPeople = isNew ? [] : (project().people || []);
   const { transactions, people, errors } = rowsToTransactions(
@@ -581,13 +509,13 @@ function saveImport() {
   );
 
   if (!transactions.length) {
-    err(errors[0] || "No valid transactions found. Check column mapping and amounts.");
+    showBanner(errors[0] || "No valid transactions found in the file.", true);
     return;
   }
 
   if (isNew) {
-    const name = $("importProjectName")?.value.trim() || importState.fileName.replace(/\.[^.]+$/, "");
-    const desc = $("importProjectDesc")?.value.trim() || `Imported from ${importState.fileName}`;
+    const name = importState.fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+    const desc = `Imported from ${importState.fileName}`;
     const np = { id: uid(), name, desc, people, transactions, settlements: [] };
     db.projects.push(np);
     db.current = np.id;
@@ -602,8 +530,11 @@ function saveImport() {
     p.transactions.push(...transactions);
   }
 
-  if (errors.length) showBanner(`Imported ${transactions.length} transaction(s). ${errors.length} row(s) skipped.`, true);
-  else showBanner(`Imported ${transactions.length} transaction(s) successfully.`);
+  const peopleNames = extractPeopleFromRows(importState.rows, importState.columnMap);
+  let msg = `Imported ${transactions.length} transaction(s) from ${importState.fileName}.`;
+  if (peopleNames.length) msg += ` People: ${peopleNames.join(", ")}.`;
+  if (errors.length) msg += ` ${errors.length} row(s) skipped.`;
+  showBanner(msg, errors.length > 0);
 
   persist();
   renderAll();
@@ -767,7 +698,7 @@ function err(msg) {
 }
 
 function saveModal() {
-  if (modal.type === "import") return saveImport();
+  if (modal.type === "import") return applyImport();
 
   const p = project();
   const { type, idx } = modal;

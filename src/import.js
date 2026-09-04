@@ -3,15 +3,15 @@ import { uid, round2 } from "./core.js";
 const XLSX_ESM = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm";
 
 const COLUMN_ALIASES = {
-  date: ["date", "transaction date", "txn date", "trans date"],
-  type: ["type", "transaction type", "txn type", "movement"],
-  description: ["description", "desc", "details", "note", "memo", "particulars"],
-  amount: ["amount", "value", "total", "sum", "amt", "price"],
-  category: ["category", "cat", "group"],
-  paidBy: ["paid by", "paid_by", "payer", "who paid", "paid", "from"],
-  heldBy: ["held by", "held_by", "holder", "received by", "received", "holds"],
-  source: ["source", "funding", "fund", "paid from"],
-  shareMode: ["share", "split", "sharing", "share_mode", "split mode"]
+  date: ["date", "transaction date", "txn date", "trans date", "dt", "when", "day"],
+  type: ["type", "transaction type", "txn type", "movement", "txn"],
+  description: ["description", "desc", "details", "note", "memo", "particulars", "narration", "item", "name", "title", "remarks", "purpose"],
+  amount: ["amount", "value", "total", "sum", "amt", "price", "cost", "debit", "credit", "money", "rupees", "rs", "inr"],
+  category: ["category", "cat", "group", "tag", "expense type"],
+  paidBy: ["paid by", "paid_by", "payer", "who paid", "paid", "from", "member", "person", "by", "spender", "paidby"],
+  heldBy: ["held by", "held_by", "holder", "received by", "received", "holds", "to", "heldby", "beneficiary"],
+  source: ["source", "funding", "fund", "paid from", "payment source"],
+  shareMode: ["share", "split", "sharing", "share_mode", "split mode", "split type"]
 };
 
 const TYPE_MAP = {
@@ -81,14 +81,131 @@ export async function parseFile(file) {
   throw new Error("Unsupported file. Use CSV or Excel (.xlsx, .xls).");
 }
 
-export function detectColumns(headers) {
+function normHeader(s) {
+  return String(s ?? "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
+function headerScore(header, aliases) {
+  const h = normHeader(header);
+  if (!h) return 0;
+  let best = 0;
+  for (const alias of aliases) {
+    if (h === alias) best = Math.max(best, 100);
+    else if (h.includes(alias) || alias.includes(h)) best = Math.max(best, 85);
+    else {
+      const hw = h.split(" ");
+      const aw = alias.split(" ");
+      if (hw.some(w => aw.includes(w) && w.length > 2)) best = Math.max(best, 70);
+    }
+  }
+  return best;
+}
+
+function looksLikeDate(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return false;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return true;
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s)) return true;
+  return !isNaN(Date.parse(s));
+}
+
+function looksLikeAmount(v) {
+  const n = Number(String(v).replace(/[₹,\s]/g, ""));
+  return Number.isFinite(n) && n > 0;
+}
+
+function inferFromContent(headers, rows) {
+  const sample = rows.slice(0, Math.min(20, rows.length));
   const map = {};
-  const lower = headers.map(h => norm(h));
-  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
-    const idx = lower.findIndex(h => aliases.includes(h));
-    if (idx >= 0) map[field] = headers[idx];
+  const scores = {};
+
+  headers.forEach(h => {
+    const vals = sample.map(r => r[h]);
+    const dateHits = vals.filter(looksLikeDate).length;
+    const amtHits = vals.filter(looksLikeAmount).length;
+    const textHits = vals.filter(v => String(v).trim().length > 2 && !looksLikeAmount(v) && !looksLikeDate(v)).length;
+
+    if (dateHits >= sample.length * 0.4) scores.date = { h, score: dateHits };
+    if (amtHits >= sample.length * 0.4) scores.amount = { h, score: amtHits };
+    if (textHits >= sample.length * 0.4) scores.description = { h, score: textHits };
+    // Short name-like values for paid by
+    const nameHits = vals.filter(v => {
+      const s = String(v).trim();
+      return s.length > 1 && s.length < 40 && !looksLikeAmount(v) && !looksLikeDate(v);
+    }).length;
+    if (nameHits >= sample.length * 0.4) scores.paidBy = { h, score: nameHits };
+  });
+
+  for (const [field, { h }] of Object.entries(scores)) {
+    if (!map[field]) map[field] = h;
   }
   return map;
+}
+
+/** Positional fallback for headerless or generic exports (col1, col2, …). */
+function positionalFallback(headers) {
+  if (headers.length < 2) return {};
+  const generic = headers.every(h => /^(column|col|field|unnamed|field\d*)$/i.test(normHeader(h)) || /^_\d+$/.test(h));
+  if (!generic && headers.some(h => headerScore(h, COLUMN_ALIASES.amount) > 0)) return {};
+  const map = {};
+  if (headers[0]) map.date = headers[0];
+  if (headers[1]) map.description = headers[1];
+  if (headers[2]) map.amount = headers[2];
+  if (headers[3]) map.category = headers[3];
+  if (headers[4]) map.paidBy = headers[4];
+  if (headers[5]) map.heldBy = headers[5];
+  return map;
+}
+
+export function detectColumns(headers, rows = []) {
+  const map = {};
+  const used = new Set();
+
+  // Pass 1: alias matching (best score wins per field)
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    let bestH = null;
+    let bestScore = 0;
+    for (const h of headers) {
+      if (used.has(h)) continue;
+      const score = headerScore(h, aliases);
+      if (score > bestScore) { bestScore = score; bestH = h; }
+    }
+    if (bestH && bestScore >= 70) {
+      map[field] = bestH;
+      used.add(bestH);
+    }
+  }
+
+  // Pass 2: infer from cell content
+  const inferred = inferFromContent(headers, rows);
+  for (const [field, h] of Object.entries(inferred)) {
+    if (!map[field] && !used.has(h)) {
+      map[field] = h;
+      used.add(h);
+    }
+  }
+
+  // Pass 3: positional fallback
+  const pos = positionalFallback(headers);
+  for (const [field, h] of Object.entries(pos)) {
+    if (!map[field]) map[field] = h;
+  }
+
+  return map;
+}
+
+export function canAutoImport(columnMap) {
+  return Boolean(columnMap.amount);
+}
+
+export function columnMapSummary(columnMap) {
+  const labels = {
+    date: "Date", type: "Type", description: "Description", amount: "Amount",
+    category: "Category", paidBy: "Paid by", heldBy: "Held by", source: "Source", shareMode: "Sharing"
+  };
+  return Object.entries(columnMap)
+    .map(([k, v]) => `${labels[k] || k}: "${v}"`)
+    .join(" · ");
 }
 
 function parseType(raw) {
