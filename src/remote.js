@@ -141,11 +141,28 @@ export async function signOut() {
   if (sb) await sb.auth.signOut();
 }
 
+/** Supabase query builders are thenable but may lack .catch (e.g. mobile Safari). */
+async function ignoreErrors(promiseLike) {
+  try {
+    await promiseLike;
+  } catch { /* optional side effects — never block sync */ }
+}
+
+async function claimProjectInvites(sb) {
+  if (!sb?.rpc) return;
+  try {
+    const { error } = await sb.rpc("claim_project_invites");
+    if (error) console.warn("claim_project_invites:", error.message);
+  } catch (e) {
+    console.warn("claim_project_invites:", e?.message || e);
+  }
+}
+
 export async function fetchRemoteProjects() {
   const sb = await getClient();
   const session = await getSession();
   if (!sb || !session) return null;
-  await sb.rpc("claim_project_invites").catch(() => {});
+  await claimProjectInvites(sb);
   const { data, error } = await sb
     .from("projects")
     .select("id, name, description, payload, updated_at")
@@ -178,11 +195,11 @@ export async function upsertRemoteProject(project) {
   };
   const { error } = await sb.from("projects").upsert(row);
   if (error) throw error;
-  await sb.from("project_members").upsert({
+  await ignoreErrors(sb.from("project_members").upsert({
     project_id: project.id,
     user_id: session.user.id,
     role: "owner"
-  }).catch(() => {});
+  }));
   return { skipped: false };
 }
 

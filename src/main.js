@@ -58,8 +58,10 @@ async function loadFromRemote() {
       db.projects = remote;
       db.current = remote.some(p => p.id === keep) ? keep : remote[0].id;
       saveLocalDB(db);
+      showBanner(`Synced ${remote.length} project(s) from cloud.`);
     } else if (db.projects.length) {
       for (const p of db.projects) await upsertRemoteProject(p);
+      showBanner("Your local projects were uploaded to the cloud.");
     }
     renderAll();
   } catch (e) {
