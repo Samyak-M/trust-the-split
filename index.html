@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#312e81">
   <title>FunToSplit — Shared project finance</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
   <div id="banner" class="banner" hidden></div>
@@ -63,6 +63,7 @@
       <section id="dashboard" class="view active">
         <div class="flex toolbar dash-toolbar">
           <div class="grow"></div>
+          <button type="button" class="secondary" id="dashSync">Sync now</button>
           <button type="button" class="secondary" id="exportReport">Export report</button>
         </div>
         <div id="kpis" class="grid kpi-grid"></div>
@@ -92,9 +93,18 @@
         </div>
 
         <div id="dashPeople" hidden>
+          <div class="card calc-guide">
+            <h2>How the numbers work</h2>
+            <div class="calc-legend">
+              <p><strong>Fair share</strong> = their portion of every expense (from equal / % / custom splits on each bill).</p>
+              <p><strong>Total contributed</strong> = Advance deposited + Paid from pocket.</p>
+              <p><strong>Extra on bills</strong> = Paid for expenses − Fair share (positive means they fronted more than their share).</p>
+              <p><strong>Net balance</strong> = Total contributed − Fair share + Repaid others − Received repayments.</p>
+            </div>
+          </div>
           <div class="card">
             <h2>Everyone at a glance</h2>
-            <p class="muted">How each person contributed, what they paid from pocket vs common fund, their fair share of total spending, and whether they paid extra or less on bills.</p>
+            <p class="muted">Step-by-step breakdown for each person.</p>
             <div id="personCards" class="person-grid"></div>
           </div>
           <div class="card">
@@ -281,6 +291,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js?v=15"></script>
+  <script type="module" src="src/main.js?v=16"></script>
 </body>
 </html>

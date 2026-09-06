@@ -34,6 +34,8 @@ function applyBuiltinConfig() {
 }
 
 function persist(opts = {}) {
+  const p = project();
+  if (p) p.updatedAt = new Date().toISOString();
   saveLocalDB(db);
   if (opts.remote === false) return;
   clearTimeout(persistTimer);
@@ -50,22 +52,77 @@ function persist(opts = {}) {
 
 async function loadFromRemote() {
   if (!session) return;
-  try {
-    const remote = await fetchRemoteProjects();
-    if (!remote) return;
-    if (remote.length) {
-      const keep = db.current;
-      db.projects = remote;
-      db.current = remote.some(p => p.id === keep) ? keep : remote[0].id;
-      saveLocalDB(db);
-      showBanner(`Synced ${remote.length} project(s) from cloud.`);
-    } else if (db.projects.length) {
-      for (const p of db.projects) await upsertRemoteProject(p);
-      showBanner("Your local projects were uploaded to the cloud.");
+  await syncNow({ quiet: true });
+}
+
+function mergeProjectLists(local, remote) {
+  const map = new Map();
+  const stamp = p => p.updatedAt || p.updated_at || "";
+  for (const p of local) map.set(p.id, p);
+  for (const r of remote) {
+    const existing = map.get(r.id);
+    if (!existing || stamp(r) >= stamp(existing)) map.set(r.id, r);
+  }
+  return [...map.values()].sort((a, b) => stamp(b).localeCompare(stamp(a)));
+}
+
+async function syncNow({ quiet = false } = {}) {
+  if (!isConfigured()) {
+    if (!quiet) {
+      showBanner("Cloud sync is not set up. Go to Share → Advanced.", true);
+      setView("settings");
     }
+    return false;
+  }
+
+  const { session: s, authError } = await resolveSession();
+  if (s) session = s;
+  if (!session?.user) {
+    if (!quiet) {
+      showBanner("Sign in with your email first (Share tab).", true);
+      setView("settings");
+    }
+    return false;
+  }
+  if (authError && !quiet) showBanner(authError, true);
+
+  const buttons = [ $("syncNow"), $("topSync"), $("dashSync") ].filter(Boolean);
+  buttons.forEach(b => { b.disabled = true; b.textContent = "Syncing…"; });
+  if (!quiet) showBanner("Syncing with cloud…");
+
+  try {
+    const localCopy = db.projects.map(p => ({ ...p }));
+    let pushed = 0;
+    const pushErrors = [];
+    for (const p of db.projects) {
+      try {
+        const r = await upsertRemoteProject(p);
+        if (!r.skipped) pushed++;
+      } catch (e) {
+        pushErrors.push(`${p.name}: ${e.message}`);
+      }
+    }
+
+    const remote = await fetchRemoteProjects();
+    if (!remote) throw new Error("Could not download from cloud. Check your connection.");
+
+    const merged = mergeProjectLists(localCopy, remote);
+    const keep = db.current;
+    db.projects = merged;
+    db.current = merged.some(p => p.id === keep) ? keep : (merged[0]?.id || db.current);
+    saveLocalDB(db);
     renderAll();
+
+    let msg = `Sync complete — ${merged.length} project(s).`;
+    if (pushed) msg += ` Uploaded ${pushed}.`;
+    if (pushErrors.length) msg += ` ${pushErrors.length} upload warning(s).`;
+    if (!quiet) showBanner(msg, pushErrors.length > 0);
+    return true;
   } catch (e) {
-    showBanner(e.message || "Could not load from cloud", true);
+    if (!quiet) showBanner(e.message || "Sync failed", true);
+    return false;
+  } finally {
+    buttons.forEach(b => { b.disabled = false; b.textContent = "Sync now"; });
   }
 }
 
@@ -96,6 +153,7 @@ function attach() {
   $("addProject").addEventListener("click", () => openModal("project", null));
   $("exportReport")?.addEventListener("click", handleExport);
   $("exportTx")?.addEventListener("click", handleExport);
+  $("dashSync")?.addEventListener("click", () => syncNow());
   $("txFilterPerson")?.addEventListener("change", () => renderTransactions(project()));
   $("txFilterCategory")?.addEventListener("change", () => renderTransactions(project()));
   $("modalCancel").addEventListener("click", closeModal);
@@ -156,8 +214,10 @@ function renderAuthArea() {
       <div class="auth-chip signed-in">
         <span class="dot online"></span>
         <span>${esc(session.user.email)}</span>
+        <button type="button" class="secondary small-btn" id="topSync">Sync now</button>
         <button type="button" class="secondary small-btn" id="topSignOut">Sign out</button>
       </div>`;
+    $("topSync").addEventListener("click", () => syncNow());
     $("topSignOut").addEventListener("click", async () => {
       await signOut();
       session = null;
@@ -212,6 +272,7 @@ function renderAll() {
   renderProjects();
   renderSettings();
   renderAuthArea();
+  if ($("dashSync")) $("dashSync").hidden = !session?.user?.email;
 }
 
 function netClass(n) {
@@ -235,6 +296,60 @@ function paidVsShareLabel(r) {
   if (nearEq(diff, 0)) return { text: "Even", cls: "settled", diff: 0 };
   if (diff > 0) return { text: `Paid ${moneyFmt(diff)} extra`, cls: "pos", diff };
   return { text: `${moneyFmt(Math.abs(diff))} less`, cls: "neg", diff };
+}
+
+function calcLine(label, value, cls = "") {
+  return `<div class="calc-line"><span>${label}</span><span class="${cls}">${value}</span></div>`;
+}
+
+function renderPersonCalcCard(r) {
+  const bal = balanceLabel(r.net);
+  const vs = paidVsShareLabel(r);
+  const commonPaid = commonFundPaid(r);
+  const contributed = round2((r.deposited || 0) + (r.pocketPaid || 0));
+
+  return `
+    <div class="person-card person-calc-card">
+      <div class="person-card-name">${esc(r.name)}</div>
+      <div class="person-card-balance ${bal.cls}">
+        ${r.status === "settled" ? "Settled up ✓" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-title">Step 1 — Money they put in</div>
+        ${calcLine("Advance deposited", moneyFmt(r.deposited), "pos")}
+        ${calcLine("+ Paid from pocket", moneyFmt(r.pocketPaid || 0), "neg")}
+        <div class="calc-line calc-total"><span>= Total contributed</span><strong>${moneyFmt(contributed)}</strong></div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-title">Step 2 — Fair share of spending</div>
+        <p class="calc-note">Added from each expense split (equal / % / custom)</p>
+        <div class="calc-line calc-total"><span>Fair share</span><strong class="neg">${moneyFmt(r.share)}</strong></div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-title">Step 3 — Extra or less on bills?</div>
+        ${calcLine("Paid for expenses (total)", moneyFmt(r.expensePaid))}
+        <p class="calc-note">Pocket ${moneyFmt(r.pocketPaid || 0)} + common fund ${moneyFmt(commonPaid)}</p>
+        ${calcLine("− Fair share", moneyFmt(r.share), "neg")}
+        <div class="calc-line calc-total"><span>= On bills</span><strong class="${vs.cls}">${vs.text}</strong></div>
+      </div>
+
+      <div class="calc-section">
+        <div class="calc-title">Step 4 — Final balance</div>
+        ${calcLine("Total contributed", moneyFmt(contributed))}
+        ${calcLine("− Fair share", moneyFmt(r.share), "neg")}
+        ${calcLine("+ Repaid others", moneyFmt(r.settledOut || 0))}
+        ${calcLine("− Received repayments", moneyFmt(r.settledIn || 0), "pos")}
+        <div class="calc-line calc-total"><span>= Net balance</span><strong class="${bal.cls}">${r.status === "settled" ? "Settled" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}</strong></div>
+      </div>
+
+      <div class="calc-section calc-section-muted">
+        <div class="calc-title">Also</div>
+        ${calcLine("Holding common cash", moneyFmt(r.holding), "pos")}
+      </div>
+    </div>`;
 }
 
 function txInvolvesPerson(p, tx, personId) {
@@ -321,50 +436,8 @@ function renderDashboard(p) {
       </div>`).join("")
     : '<p class="muted">No repayments recorded yet.</p>';
 
-  $("personCards").innerHTML = rows.map(r => {
-    const bal = balanceLabel(r.net);
-    const vs = paidVsShareLabel(r);
-    const commonPaid = commonFundPaid(r);
-    return `
-      <div class="person-card">
-        <div class="person-card-name">${esc(r.name)}</div>
-        <div class="person-card-balance ${bal.cls}">
-          ${r.status === "settled" ? "Settled up" : `${moneyFmt(Math.abs(r.net))} ${bal.text}`}
-        </div>
-        <div class="person-card-stats">
-          <div class="stat-block">
-            <span class="stat-label">Advance deposited</span>
-            <span class="stat-hint">Put into common pot</span>
-            <strong class="pos">${moneyFmt(r.deposited)}</strong>
-          </div>
-          <div class="stat-block">
-            <span class="stat-label">Paid from pocket</span>
-            <span class="stat-hint">Own money for bills</span>
-            <strong class="neg">${moneyFmt(r.pocketPaid || 0)}</strong>
-          </div>
-          <div class="stat-block">
-            <span class="stat-label">Paid via common fund</span>
-            <span class="stat-hint">Bills from shared cash</span>
-            <strong class="neg">${moneyFmt(commonPaid)}</strong>
-          </div>
-          <div class="stat-block">
-            <span class="stat-label">Fair share of spending</span>
-            <span class="stat-hint">Their portion of all expenses</span>
-            <strong class="neg">${moneyFmt(r.share)}</strong>
-          </div>
-          <div class="stat-block">
-            <span class="stat-label">Extra / less on bills</span>
-            <span class="stat-hint">Paid vs fair share</span>
-            <strong class="${vs.cls}">${vs.text}</strong>
-          </div>
-          <div class="stat-block">
-            <span class="stat-label">Holding cash</span>
-            <span class="stat-hint">Common cash in hand</span>
-            <strong class="pos">${moneyFmt(r.holding)}</strong>
-          </div>
-        </div>
-      </div>`;
-  }).join("") || '<p class="muted">Add people to see individual spending.</p>';
+  $("personCards").innerHTML = rows.map(r => renderPersonCalcCard(r)).join("")
+    || '<p class="muted">Add people to see individual spending.</p>';
 
   $("personSummary").innerHTML = rows.map(r => {
     const bal = balanceLabel(r.net);
@@ -574,11 +647,13 @@ function renderSettings() {
     $("syncStatus").innerHTML = `
       <div class="sync-banner good">
         <span class="sync-icon">☁️</span>
-        <div>
+        <div class="grow">
           <strong>Cloud sync enabled</strong>
-          <p class="muted">${signedIn ? "Your changes sync automatically with your group." : "Sign in below to start syncing."}</p>
+          <p class="muted">${signedIn ? `Signed in as ${esc(session.user.email)}. Tap Sync now to pull the latest on this device.` : "Sign in below to start syncing."}</p>
+          ${signedIn ? `<button type="button" class="secondary" id="syncNow" style="margin-top:10px">Sync now</button>` : ""}
         </div>
       </div>`;
+    $("syncNow")?.addEventListener("click", () => syncNow());
     $("advancedSettings").hidden = Boolean(SUPABASE.url && SUPABASE.anonKey);
   } else {
     $("syncStatus").innerHTML = `

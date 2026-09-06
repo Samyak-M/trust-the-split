@@ -205,6 +205,7 @@ body {
   box-shadow: var(--shadow);
   max-width: 100%;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .auth-chip > span:not(.dot) {
@@ -311,10 +312,70 @@ body {
 /* ── Person cards ── */
 .person-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
   margin-top: 12px;
 }
+
+.person-calc-card { background: #fafbfc; }
+
+.calc-guide {
+  background: linear-gradient(180deg, #fff 0%, #f5f3ff 100%);
+  border-color: #c7d2fe;
+}
+
+.calc-legend p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.calc-legend p:last-child { margin-bottom: 0; }
+
+.calc-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.calc-section-muted { opacity: 0.95; }
+
+.calc-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.calc-note {
+  font-size: 12px;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.calc-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.calc-line span:first-child { color: var(--muted); }
+
+.calc-line.calc-total {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.calc-line.calc-total span:first-child { color: var(--ink); }
+
+.sync-banner .grow { flex: 1; min-width: 0; }
 
 .person-card {
   border: 1px solid var(--line);
